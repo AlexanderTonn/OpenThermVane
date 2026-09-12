@@ -13,6 +13,15 @@ Rectangle {
     radius: 8
     color: "#1b1f29"
     border.color: available ? "#2d3442" : "#5a2f38"
+    ToolTip.visible: mouseArea.containsMouse && root.source.length > 0
+    ToolTip.text: root.source
+
+    MouseArea {
+        id: mouseArea
+        anchors.fill: parent
+        hoverEnabled: true
+        acceptedButtons: Qt.NoButton
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -33,11 +42,5 @@ Rectangle {
             font.weight: Font.Bold
         }
 
-        Label {
-            text: root.source
-            opacity: 0.62
-            elide: Text.ElideRight
-            Layout.fillWidth: true
-        }
     }
 }

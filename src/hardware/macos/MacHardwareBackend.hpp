@@ -16,6 +16,9 @@ public:
     QList<FanInfo> fans() const override;
     bool setFanSpeed(const QString &fanId, double percent) override;
     bool restoreAutomaticControl(const QString &fanId) override;
+
+private:
+    QList<SensorInfo> m_sensors;
 };
 
 } // namespace thermvane

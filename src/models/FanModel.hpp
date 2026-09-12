@@ -31,7 +31,6 @@ public:
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-    Q_INVOKABLE void scan();
     Q_INVOKABLE bool setManualSpeed(const QString &fanId, double percent);
     Q_INVOKABLE bool restoreAutomaticControl(const QString &fanId);
 

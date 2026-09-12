@@ -10,6 +10,7 @@ namespace thermvane {
 class SensorModel final : public QAbstractListModel
 {
     Q_OBJECT
+    Q_PROPERTY(int refreshIntervalMs READ refreshIntervalMs WRITE setRefreshIntervalMs NOTIFY refreshIntervalMsChanged)
 
 public:
     enum Role {
@@ -23,15 +24,22 @@ public:
     explicit SensorModel(QObject *parent = nullptr);
 
     void setManager(SensorManager *manager);
+    int refreshIntervalMs() const;
+    void setRefreshIntervalMs(int intervalMs);
 
     int rowCount(const QModelIndex &parent = {}) const override;
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-    Q_INVOKABLE void scan();
+
+signals:
+    void refreshIntervalMsChanged();
 
 private:
+    void replaceSensors(QList<SensorInfo> sensors);
+
     QPointer<SensorManager> m_manager;
+    QList<SensorInfo> m_sensors;
 };
 
 } // namespace thermvane

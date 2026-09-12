@@ -32,12 +32,6 @@ QList<FanInfo> FanManager::fans() const
     return m_fans;
 }
 
-void FanManager::scan()
-{
-    if (m_backend) {
-        m_backend->scan();
-    }
-}
 
 bool FanManager::setManualSpeed(const QString &fanId, double percent)
 {

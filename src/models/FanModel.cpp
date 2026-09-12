@@ -85,12 +85,6 @@ QHash<int, QByteArray> FanModel::roleNames() const
     };
 }
 
-void FanModel::scan()
-{
-    if (m_manager) {
-        m_manager->scan();
-    }
-}
 
 bool FanModel::setManualSpeed(const QString &fanId, double percent)
 {

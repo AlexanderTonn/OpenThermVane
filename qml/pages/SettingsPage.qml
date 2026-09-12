@@ -52,22 +52,54 @@ Item {
         }
 
         GroupBox {
-            title: qsTr("Backend")
+            title: qsTr("Sensors")
             Layout.fillWidth: true
 
-            RowLayout {
+            ColumnLayout {
                 anchors.fill: parent
-                Label {
-                    text: qsTr("Mock")
+                spacing: 10
+
+                RowLayout {
                     Layout.fillWidth: true
+
+                    Label {
+                        text: qsTr("Update interval")
+                        Layout.fillWidth: true
+                    }
+
+                    SpinBox {
+                        id: sensorRefreshInterval
+                        from: 250
+                        to: 60000
+                        stepSize: 250
+                        editable: true
+                        value: sensorModel && sensorModel.refreshIntervalMs !== undefined
+                               ? sensorModel.refreshIntervalMs
+                               : 1000
+                        onValueModified: {
+                            if (sensorModel && sensorModel.refreshIntervalMs !== undefined)
+                                sensorModel.refreshIntervalMs = value
+                        }
+                    }
+
+                    Label { text: "ms" }
                 }
-                Button {
-                    text: qsTr("Scan")
-                    onClicked: {
-                        if (fanModel.scan)
-                            fanModel.scan()
-                        if (sensorModel.scan)
-                            sensorModel.scan()
+
+                Label {
+                    Layout.fillWidth: true
+                    opacity: 0.65
+                    wrapMode: Text.WordWrap
+                    text: qsTr("Only temperature sensors with readable values are shown.")
+                }
+
+
+                Connections {
+                    target: sensorModel
+                    ignoreUnknownSignals: true
+
+                    function onRefreshIntervalMsChanged() {
+                        if (sensorModel && sensorModel.refreshIntervalMs !== undefined)
+                            sensorRefreshInterval.value = sensorModel.refreshIntervalMs
                     }
                 }
             }

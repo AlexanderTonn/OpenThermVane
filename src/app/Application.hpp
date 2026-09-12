@@ -4,6 +4,8 @@
 #include "core/FanManager.hpp"
 #include "core/SensorManager.hpp"
 #include "hardware/mock/MockHardwareBackend.hpp"
+#include "hardware/macos/MacHardwareBackend.hpp"
+#include "hardware/HardwareTypes.hpp"
 #include "models/FanCurveModel.hpp"
 #include "models/FanModel.hpp"
 #include "models/SensorModel.hpp"
@@ -23,9 +25,11 @@ public:
     SensorModel *sensorModel();
     FanCurveModel *fanCurveModel();
     FanController *fanController();
+    QList<SensorInfo> sensors() const;
 
 private:
     MockHardwareBackend m_backend;
+    MacHardwareBackend m_macBackend;
     FanManager m_fanManager;
     SensorManager m_sensorManager;
     FanController m_fanController;

@@ -1,6 +1,27 @@
 #include "models/SensorModel.hpp"
 
+#include <utility>
+
 namespace thermvane {
+
+namespace {
+
+bool sameSensorOrder(const QList<SensorInfo> &left, const QList<SensorInfo> &right)
+{
+    if (left.size() != right.size()) {
+        return false;
+    }
+
+    for (qsizetype index = 0; index < left.size(); ++index) {
+        if (left.at(index).id != right.at(index).id) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+} // namespace
 
 SensorModel::SensorModel(QObject *parent)
     : QAbstractListModel(parent)
@@ -19,36 +40,51 @@ void SensorModel::setManager(SensorManager *manager)
 
     beginResetModel();
     m_manager = manager;
+    m_sensors = m_manager ? m_manager->sensors() : QList<SensorInfo> {};
     endResetModel();
 
     if (m_manager) {
         connect(m_manager, &SensorManager::sensorsChanged, this, [this] {
-            beginResetModel();
-            endResetModel();
+            replaceSensors(m_manager ? m_manager->sensors() : QList<SensorInfo> {});
         });
+        connect(m_manager, &SensorManager::refreshIntervalMsChanged,
+                this, &SensorModel::refreshIntervalMsChanged);
+    }
+
+    emit refreshIntervalMsChanged();
+}
+
+int SensorModel::refreshIntervalMs() const
+{
+    return m_manager ? m_manager->refreshIntervalMs() : 1000;
+}
+
+void SensorModel::setRefreshIntervalMs(int intervalMs)
+{
+    if (m_manager) {
+        m_manager->setRefreshIntervalMs(intervalMs);
     }
 }
 
 int SensorModel::rowCount(const QModelIndex &parent) const
 {
-    if (parent.isValid() || !m_manager) {
+    if (parent.isValid()) {
         return 0;
     }
-    return static_cast<int>(m_manager->sensors().size());
+    return static_cast<int>(m_sensors.size());
 }
 
 QVariant SensorModel::data(const QModelIndex &index, int role) const
 {
-    if (!m_manager || !index.isValid()) {
+    if (!index.isValid()) {
         return {};
     }
 
-    const auto sensors = m_manager->sensors();
-    if (index.row() < 0 || index.row() >= sensors.size()) {
+    if (index.row() < 0 || index.row() >= m_sensors.size()) {
         return {};
     }
 
-    const auto &sensor = sensors.at(index.row());
+    const auto &sensor = m_sensors.at(index.row());
     switch (role) {
     case IdRole:
         return sensor.id;
@@ -76,11 +112,20 @@ QHash<int, QByteArray> SensorModel::roleNames() const
     };
 }
 
-void SensorModel::scan()
+
+void SensorModel::replaceSensors(QList<SensorInfo> sensors)
 {
-    if (m_manager) {
-        m_manager->scan();
+    if (sameSensorOrder(m_sensors, sensors)) {
+        m_sensors = std::move(sensors);
+        if (!m_sensors.isEmpty()) {
+            emit dataChanged(index(0), index(m_sensors.size() - 1), {NameRole, TemperatureRole, SourceRole, AvailableRole});
+        }
+        return;
     }
+
+    beginResetModel();
+    m_sensors = std::move(sensors);
+    endResetModel();
 }
 
 } // namespace thermvane

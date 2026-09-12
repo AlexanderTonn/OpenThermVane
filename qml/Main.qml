@@ -45,15 +45,6 @@ ApplicationWindow {
                 onActivated: window.languageManager.setLanguage(currentText)
             }
 
-            Button {
-                text: qsTr("Scan")
-                onClicked: {
-                    if (window.fanModel.scan)
-                        window.fanModel.scan()
-                    if (window.sensorModel.scan)
-                        window.sensorModel.scan()
-                }
-            }
         }
     }
 
@@ -98,6 +89,7 @@ ApplicationWindow {
 
     ListModel {
         id: designSensorModel
+        property int refreshIntervalMs: 1000
         ListElement { sensorId: "cpu-package"; name: "CPU Package"; temperature: 54.0; source: "mock"; available: true }
         ListElement { sensorId: "gpu-core"; name: "GPU Core"; temperature: 61.0; source: "mock"; available: true }
         ListElement { sensorId: "ssd"; name: "SSD"; temperature: 42.0; source: "mock"; available: true }

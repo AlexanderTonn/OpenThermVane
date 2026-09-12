@@ -19,6 +19,7 @@ Item {
             Layout.fillHeight: true
 
             GridView {
+                id: dashboardSensorGrid
                 anchors.fill: parent
                 cellWidth: 220
                 cellHeight: 110
@@ -33,6 +34,16 @@ Item {
                     source: model.source
                     available: model.available
                 }
+            }
+
+            Label {
+                anchors.centerIn: parent
+                width: Math.min(parent.width - 40, 420)
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+                opacity: 0.7
+                visible: dashboardSensorGrid.count === 0
+                text: qsTr("No readable temperature values.")
             }
         }
 

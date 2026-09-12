@@ -20,7 +20,6 @@ public:
     void setBackend(IHardwareBackend *backend);
     QList<FanInfo> fans() const;
 
-    Q_INVOKABLE void scan();
     Q_INVOKABLE bool setManualSpeed(const QString &fanId, double percent);
     Q_INVOKABLE bool restoreAutomaticControl(const QString &fanId);
 

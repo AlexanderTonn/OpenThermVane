@@ -119,6 +119,15 @@ target_link_libraries(ThermVane PRIVATE
     Qt6::QuickControls2
 )
 
+if(APPLE)
+    find_library(IOKIT_FRAMEWORK IOKit REQUIRED)
+    find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+    target_link_libraries(ThermVane PRIVATE
+        ${IOKIT_FRAMEWORK}
+        ${COREFOUNDATION_FRAMEWORK}
+    )
+endif()
+
 install(TARGETS ThermVane
     BUNDLE DESTINATION .
     RUNTIME DESTINATION bin
