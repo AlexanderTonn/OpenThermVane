@@ -1,0 +1,36 @@
+import QmlProject
+
+Project {
+    mainFile: "qml/Main.qml"
+
+    QmlFiles {
+        directory: "qml"
+    }
+
+    JavaScriptFiles {
+        directory: "qml"
+    }
+
+    ImageFiles {
+        directory: "qml"
+    }
+
+    Files {
+        filter: "*.conf"
+        files: ["qtquickcontrols2.conf"]
+    }
+
+    Files {
+        filter: "*.md"
+        files: ["README.md", "docs/architecture.md"]
+    }
+
+    Environment {
+        QT_QUICK_CONTROLS_CONF: "qtquickcontrols2.conf"
+        QT_AUTO_SCREEN_SCALE_FACTOR: "1"
+    }
+
+    qt6Project: true
+    importPaths: [ ".", "qml" ]
+    targetDirectory: "/opt/thermvane"
+}
