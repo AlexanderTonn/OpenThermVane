@@ -63,6 +63,73 @@ Item {
         return modelItems(curveModel)
     }
 
+    function smoothSpeedAt(temperature, curvePoints) {
+        if (curveModel && curveModel.speedForTemperature)
+            return curveModel.speedForTemperature(temperature)
+
+        if (curvePoints.length === 0)
+            return 100
+        if (temperature <= curvePoints[0].temperature)
+            return curvePoints[0].speed
+
+        for (let i = 1; i < curvePoints.length; ++i) {
+            const previous = curvePoints[i - 1]
+            const next = curvePoints[i]
+            if (temperature <= next.temperature) {
+                const span = next.temperature - previous.temperature
+                if (span <= 0)
+                    return next.speed
+
+                const ratio = (temperature - previous.temperature) / span
+                const segmentSlope = (next.speed - previous.speed) / span
+                let previousTangent = segmentSlope
+                let nextTangent = segmentSlope
+
+                if (i > 1) {
+                    const beforePrevious = curvePoints[i - 2]
+                    const previousSpan = previous.temperature - beforePrevious.temperature
+                    if (previousSpan > 0) {
+                        const previousSlope = (previous.speed - beforePrevious.speed) / previousSpan
+                        previousTangent = root.monotoneTangent(previousSlope, segmentSlope)
+                    }
+                }
+
+                if (i + 1 < curvePoints.length) {
+                    const afterNext = curvePoints[i + 1]
+                    const nextSpan = afterNext.temperature - next.temperature
+                    if (nextSpan > 0) {
+                        const nextSlope = (afterNext.speed - next.speed) / nextSpan
+                        nextTangent = root.monotoneTangent(segmentSlope, nextSlope)
+                    }
+                }
+
+                const speed = root.hermite(previous.speed, next.speed, previousTangent, nextTangent, span, ratio)
+                const minSpeed = Math.min(previous.speed, next.speed)
+                const maxSpeed = Math.max(previous.speed, next.speed)
+                return Math.max(minSpeed, Math.min(maxSpeed, speed))
+            }
+        }
+
+        return curvePoints[curvePoints.length - 1].speed
+    }
+
+    function monotoneTangent(previousSlope, nextSlope) {
+        if (previousSlope * nextSlope <= 0)
+            return 0
+        return 2 / ((1 / previousSlope) + (1 / nextSlope))
+    }
+
+    function hermite(startValue, endValue, startTangent, endTangent, span, ratio) {
+        const ratio2 = ratio * ratio
+        const ratio3 = ratio2 * ratio
+        const h00 = (2 * ratio3) - (3 * ratio2) + 1
+        const h10 = ratio3 - (2 * ratio2) + ratio
+        const h01 = (-2 * ratio3) + (3 * ratio2)
+        const h11 = ratio3 - ratio2
+        return (h00 * startValue) + (h10 * span * startTangent)
+             + (h01 * endValue) + (h11 * span * endTangent)
+    }
+
     function updateActiveTemperature() {
         if (root.activeTemperatureOverride >= 0) {
             activeTemperature = root.activeTemperatureOverride
@@ -207,14 +274,18 @@ Item {
                 ctx.strokeStyle = "#55d6be"
                 ctx.lineWidth = 3
                 ctx.beginPath()
-                for (let p = 0; p < points.length; ++p) {
-                    const x = root.xForTemperature(points[p].temperature)
-                    const y = root.yForSpeed(points[p].speed)
-                    if (p === 0) {
+                const firstTemperature = Math.max(root.minTemperature, points[0].temperature)
+                const lastTemperature = Math.min(root.maxTemperature, points[points.length - 1].temperature)
+                const samples = Math.max(16, Math.min(96, Math.round(width / 8)))
+                for (let sample = 0; sample <= samples; ++sample) {
+                    const ratio = samples === 0 ? 0 : sample / samples
+                    const temperature = firstTemperature + ((lastTemperature - firstTemperature) * ratio)
+                    const x = root.xForTemperature(temperature)
+                    const y = root.yForSpeed(root.smoothSpeedAt(temperature, points))
+                    if (sample === 0)
                         ctx.moveTo(x, y)
-                    } else {
+                    else
                         ctx.lineTo(x, y)
-                    }
                 }
                 ctx.stroke()
             }
@@ -341,6 +412,7 @@ Item {
             required property int index
             required property real temperature
             required property real speed
+            property var editor: root
 
             width: 16
             height: 16
@@ -358,18 +430,19 @@ Item {
                 yAxis.minimum: -handle.height / 2
                 yAxis.maximum: root.height - handle.height / 2
                 onActiveChanged: {
-                    if (!active && root.curveModel) {
-                        const temperature = root.temperatureForX(handle.x + handle.width / 2)
-                        const speed = root.speedForY(handle.y + handle.height / 2)
+                    const editor = handle.editor
+                    if (!active && editor && editor.curveModel) {
+                        const temperature = editor.temperatureForX(handle.x + handle.width / 2)
+                        const speed = editor.speedForY(handle.y + handle.height / 2)
 
-                        if (root.curveModel.movePoint) {
-                            root.curveModel.movePoint(handle.index, temperature, speed)
-                        } else if (root.curveModel.setProperty) {
-                            root.curveModel.setProperty(handle.index, "temperature", temperature)
-                            root.curveModel.setProperty(handle.index, "speed", speed)
+                        if (editor.curveModel.movePoint) {
+                            editor.curveModel.movePoint(handle.index, temperature, speed)
+                        } else if (editor.curveModel.setProperty) {
+                            editor.curveModel.setProperty(handle.index, "temperature", temperature)
+                            editor.curveModel.setProperty(handle.index, "speed", speed)
                         }
 
-                        root.redraw()
+                        editor.redraw()
                     }
                 }
             }

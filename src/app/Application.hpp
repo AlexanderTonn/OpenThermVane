@@ -3,6 +3,12 @@
 #include "core/FanController.hpp"
 #include "core/FanManager.hpp"
 #include "core/SensorManager.hpp"
+
+#include <QtGlobal>
+
+#if defined(Q_OS_LINUX)
+#include "hardware/linux/LinuxHardwareBackend.hpp"
+#endif
 #include "hardware/mock/MockHardwareBackend.hpp"
 #include "hardware/macos/MacHardwareBackend.hpp"
 #include "hardware/HardwareTypes.hpp"
@@ -29,6 +35,9 @@ public:
 
 private:
     MockHardwareBackend m_backend;
+#if defined(Q_OS_LINUX)
+    LinuxHardwareBackend m_linuxBackend;
+#endif
     MacHardwareBackend m_macBackend;
     FanManager m_fanManager;
     SensorManager m_sensorManager;

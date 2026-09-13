@@ -1,6 +1,8 @@
 #include "models/FanCurveModel.hpp"
 
 #include <algorithm>
+#include <QByteArray>
+#include <QSettings>
 #include <QVariantMap>
 
 namespace thermvane {
@@ -13,11 +15,27 @@ const QString &fallbackFanId()
     return fallback;
 }
 
+QString normalizedFanId(const QString &fanId)
+{
+    return fanId.isEmpty() ? fallbackFanId() : fanId;
+}
+
+QString settingsKeyForFanId(const QString &fanId)
+{
+    return QString::fromLatin1(normalizedFanId(fanId).toUtf8().toPercentEncoding());
+}
+
+QString fanIdFromSettingsKey(const QString &key)
+{
+    return QString::fromUtf8(QByteArray::fromPercentEncoding(key.toUtf8()));
+}
+
 } // namespace
 
 FanCurveModel::FanCurveModel(QObject *parent)
     : QAbstractListModel(parent)
 {
+    loadSettings();
 }
 
 QString FanCurveModel::selectedFanId() const
@@ -36,6 +54,8 @@ void FanCurveModel::setSelectedFanId(const QString &fanId)
     curveForFan(m_selectedFanId);
     endResetModel();
 
+    saveSelectedFanId();
+
     emit selectedFanIdChanged();
     emit selectedSensorIdChanged();
 }
@@ -52,13 +72,12 @@ void FanCurveModel::setSelectedSensorId(const QString &sensorId)
 
 QString FanCurveModel::sensorIdForFan(const QString &fanId) const
 {
-    const QString key = fanId.isEmpty() ? fallbackFanId() : fanId;
-    return m_sensorIdsByFanId.value(key);
+    return m_sensorIdsByFanId.value(normalizedFanId(fanId));
 }
 
 void FanCurveModel::setSensorIdForFan(const QString &fanId, const QString &sensorId)
 {
-    const QString key = fanId.isEmpty() ? fallbackFanId() : fanId;
+    const QString key = normalizedFanId(fanId);
     if (m_sensorIdsByFanId.value(key) == sensorId) {
         return;
     }
@@ -69,7 +88,9 @@ void FanCurveModel::setSensorIdForFan(const QString &fanId, const QString &senso
         m_sensorIdsByFanId.insert(key, sensorId);
     }
 
-    if (key == (m_selectedFanId.isEmpty() ? fallbackFanId() : m_selectedFanId)) {
+    saveSensorIdForFan(key);
+
+    if (key == normalizedFanId(m_selectedFanId)) {
         emit selectedSensorIdChanged();
     }
     emit fanSensorBindingsChanged();
@@ -78,6 +99,36 @@ void FanCurveModel::setSensorIdForFan(const QString &fanId, const QString &senso
 double FanCurveModel::speedForFanTemperature(const QString &fanId, double temperature) const
 {
     return curveForFan(fanId).speedForTemperature(temperature);
+}
+
+QStringList FanCurveModel::curveAutoFanIds() const
+{
+    QStringList ids = m_curveAutoFanIds.values();
+    ids.sort();
+    return ids;
+}
+
+bool FanCurveModel::curveAutoForFan(const QString &fanId) const
+{
+    return m_curveAutoFanIds.contains(normalizedFanId(fanId));
+}
+
+void FanCurveModel::setCurveAutoForFan(const QString &fanId, bool enabled)
+{
+    const QString key = normalizedFanId(fanId);
+    const bool changed = enabled ? !m_curveAutoFanIds.contains(key) : m_curveAutoFanIds.contains(key);
+    if (!changed) {
+        return;
+    }
+
+    if (enabled) {
+        m_curveAutoFanIds.insert(key);
+    } else {
+        m_curveAutoFanIds.remove(key);
+    }
+
+    saveCurveAutoFanIds();
+    emit curveAutoFansChanged();
 }
 
 int FanCurveModel::rowCount(const QModelIndex &parent) const
@@ -125,6 +176,8 @@ void FanCurveModel::movePoint(int row, double temperature, double speed)
     beginResetModel();
     curve.setPoints(std::move(points));
     endResetModel();
+
+    saveCurveForFan(m_selectedFanId);
 }
 
 double FanCurveModel::speedForTemperature(double temperature) const
@@ -146,7 +199,7 @@ QVariantList FanCurveModel::points() const
 
 FanCurve &FanCurveModel::curveForFan(const QString &fanId)
 {
-    const QString key = fanId.isEmpty() ? fallbackFanId() : fanId;
+    const QString key = normalizedFanId(fanId);
     if (!m_curvesByFanId.contains(key)) {
         m_curvesByFanId.insert(key, FanCurve {});
     }
@@ -155,9 +208,129 @@ FanCurve &FanCurveModel::curveForFan(const QString &fanId)
 
 const FanCurve &FanCurveModel::curveForFan(const QString &fanId) const
 {
-    const QString key = fanId.isEmpty() ? fallbackFanId() : fanId;
+    const QString key = normalizedFanId(fanId);
     const auto it = m_curvesByFanId.constFind(key);
     return it == m_curvesByFanId.constEnd() ? m_defaultCurve : it.value();
+}
+
+void FanCurveModel::loadSettings()
+{
+    QSettings settings;
+    settings.beginGroup(QStringLiteral("fanCurves"));
+
+    m_selectedFanId = settings.value(QStringLiteral("selectedFanId")).toString();
+
+    settings.beginGroup(QStringLiteral("curves"));
+    const QStringList curveGroups = settings.childGroups();
+    for (const QString &curveGroup : curveGroups) {
+        settings.beginGroup(curveGroup);
+        const QString fanId = settings.value(QStringLiteral("fanId"), fanIdFromSettingsKey(curveGroup)).toString();
+        QList<FanCurvePoint> points;
+        const int pointCount = settings.beginReadArray(QStringLiteral("points"));
+        for (int index = 0; index < pointCount; ++index) {
+            settings.setArrayIndex(index);
+            bool temperatureOk = false;
+            bool speedOk = false;
+            const double temperature = settings.value(QStringLiteral("temperature")).toDouble(&temperatureOk);
+            const double speed = settings.value(QStringLiteral("speed")).toDouble(&speedOk);
+            if (temperatureOk && speedOk) {
+                points.append({temperature, speed});
+            }
+        }
+        settings.endArray();
+        settings.endGroup();
+
+        if (points.size() >= 2) {
+            m_curvesByFanId.insert(normalizedFanId(fanId), FanCurve(points));
+        }
+    }
+    settings.endGroup();
+
+    settings.beginGroup(QStringLiteral("sensors"));
+    const QStringList sensorGroups = settings.childGroups();
+    for (const QString &sensorGroup : sensorGroups) {
+        settings.beginGroup(sensorGroup);
+        const QString fanId = settings.value(QStringLiteral("fanId"), fanIdFromSettingsKey(sensorGroup)).toString();
+        const QString sensorId = settings.value(QStringLiteral("sensorId")).toString();
+        settings.endGroup();
+
+        if (!sensorId.isEmpty()) {
+            m_sensorIdsByFanId.insert(normalizedFanId(fanId), sensorId);
+        }
+    }
+    settings.endGroup();
+
+    const QStringList autoFanIds = settings.value(QStringLiteral("curveAutoFanIds")).toStringList();
+    for (const QString &fanId : autoFanIds) {
+        if (!fanId.isEmpty()) {
+            m_curveAutoFanIds.insert(normalizedFanId(fanId));
+        }
+    }
+
+    settings.endGroup();
+}
+
+void FanCurveModel::saveSelectedFanId() const
+{
+    QSettings settings;
+    settings.setValue(QStringLiteral("fanCurves/selectedFanId"), m_selectedFanId);
+}
+
+void FanCurveModel::saveCurveForFan(const QString &fanId) const
+{
+    const QString key = normalizedFanId(fanId);
+    const auto it = m_curvesByFanId.constFind(key);
+    if (it == m_curvesByFanId.constEnd()) {
+        return;
+    }
+
+    QSettings settings;
+    settings.beginGroup(QStringLiteral("fanCurves"));
+    settings.beginGroup(QStringLiteral("curves"));
+    settings.beginGroup(settingsKeyForFanId(key));
+    settings.setValue(QStringLiteral("fanId"), key);
+    settings.beginWriteArray(QStringLiteral("points"));
+    const auto &points = it.value().points();
+    for (int index = 0; index < points.size(); ++index) {
+        settings.setArrayIndex(index);
+        settings.setValue(QStringLiteral("temperature"), points.at(index).temperature);
+        settings.setValue(QStringLiteral("speed"), points.at(index).fanSpeed);
+    }
+    settings.endArray();
+    settings.endGroup();
+    settings.endGroup();
+    settings.endGroup();
+}
+
+void FanCurveModel::saveSensorIdForFan(const QString &fanId) const
+{
+    const QString key = normalizedFanId(fanId);
+    QSettings settings;
+    settings.beginGroup(QStringLiteral("fanCurves"));
+    settings.beginGroup(QStringLiteral("sensors"));
+
+    const QString settingsKey = settingsKeyForFanId(key);
+    const QString sensorId = m_sensorIdsByFanId.value(key);
+    if (sensorId.isEmpty()) {
+        settings.remove(settingsKey);
+    } else {
+        settings.beginGroup(settingsKey);
+        settings.setValue(QStringLiteral("fanId"), key);
+        settings.setValue(QStringLiteral("sensorId"), sensorId);
+        settings.endGroup();
+    }
+
+    settings.endGroup();
+    settings.endGroup();
+}
+
+void FanCurveModel::saveCurveAutoFanIds() const
+{
+    QStringList ids = m_curveAutoFanIds.values();
+    ids.sort();
+
+    QSettings settings;
+    settings.setValue(QStringLiteral("fanCurves/curveAutoFanIds"), ids);
 }
 
 } // namespace thermvane

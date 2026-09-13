@@ -11,6 +11,8 @@ Application::Application(QObject *parent)
     IHardwareBackend *backend = QSysInfo::currentCpuArchitecture() == QStringLiteral("arm64")
         ? static_cast<IHardwareBackend *>(&m_macBackend)
         : static_cast<IHardwareBackend *>(&m_backend);
+#elif defined(Q_OS_LINUX)
+    IHardwareBackend *backend = &m_linuxBackend;
 #else
     IHardwareBackend *backend = &m_backend;
 #endif

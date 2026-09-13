@@ -10,10 +10,14 @@ Item {
     property var sensorModel
     property var fanCurveModel
     property var curveAutoFans: ({})
-    property string selectedFanId: fanCurveModel && fanCurveModel.selectedFanId !== undefined ? fanCurveModel.selectedFanId : ""
-    property string selectedSensorId: fanCurveModel && fanCurveModel.selectedSensorId !== undefined ? fanCurveModel.selectedSensorId : ""
+    property string selectedFanId: fanCurveModel && fanCurveModel.selectedFanId !== undefined
+                                   ? fanCurveModel.selectedFanId : ""
+    property string selectedSensorId: fanCurveModel && fanCurveModel.selectedSensorId !== undefined
+                                      ? fanCurveModel.selectedSensorId : ""
     property real selectedSensorTemperature: -1
     property var displayedFanSpeeds: ({})
+    property var lastAppliedCurveSpeeds: ({})
+    property var applyingCurveSpeeds: ({})
 
     function itemAt(model, row) {
         if (!model || row < 0)
@@ -94,20 +98,54 @@ Item {
     }
 
     function isCurveAuto(fanId) {
+        if (curveAutoFans[fanId] === true)
+            return true
+        if (fanCurveModel && fanCurveModel.curveAutoForFan)
+            return fanCurveModel.curveAutoForFan(fanId)
         return curveAutoFans[fanId] === true
     }
 
+    function syncCurveAutoFromModel() {
+        if (!fanCurveModel || !fanCurveModel.curveAutoFanIds)
+            return
+
+        const next = ({})
+        const fanIds = fanCurveModel.curveAutoFanIds()
+        for (let i = 0; i < fanIds.length; ++i) {
+            if (fanIds[i])
+                next[fanIds[i]] = true
+        }
+        curveAutoFans = next
+    }
+
+    function selectedFanSupportsControl() {
+        const fanIndex = findFanIndex(selectedFanId)
+        if (fanIndex < 0)
+            return false
+        const fan = itemAt(fanModel, fanIndex)
+        return fan.supportsControl === true
+    }
+
     function setCurveAuto(fanId, enabled) {
+        if (!fanId)
+            return
+
         const next = Object.assign({}, curveAutoFans)
         if (enabled)
             next[fanId] = true
         else
             delete next[fanId]
         curveAutoFans = next
+
+        if (fanCurveModel && fanCurveModel.setCurveAutoForFan)
+            fanCurveModel.setCurveAutoForFan(fanId, enabled)
     }
 
     function applyCurve(fanId) {
         if (!fanModel || !fanModel.setManualSpeed || !fanCurveModel)
+            return
+        const fanIndex = findFanIndex(fanId)
+        if (fanIndex < 0 || itemAt(fanModel, fanIndex).supportsControl !== true)
             return
 
         const sensorId = fanCurveModel.sensorIdForFan ? fanCurveModel.sensorIdForFan(fanId) : selectedSensorId
@@ -118,7 +156,29 @@ Item {
         const speed = fanCurveModel.speedForFanTemperature
                     ? fanCurveModel.speedForFanTemperature(fanId, temperature)
                     : fanCurveModel.speedForTemperature(temperature)
-        fanModel.setManualSpeed(fanId, speed)
+        if (lastAppliedCurveSpeeds[fanId] !== undefined && Math.abs(lastAppliedCurveSpeeds[fanId] - speed) < 0.5)
+            return
+        if (applyingCurveSpeeds[fanId] === true)
+            return
+
+        let nextApplying = Object.assign({}, applyingCurveSpeeds)
+        nextApplying[fanId] = true
+        applyingCurveSpeeds = nextApplying
+
+        const nextApplied = Object.assign({}, lastAppliedCurveSpeeds)
+        nextApplied[fanId] = speed
+        lastAppliedCurveSpeeds = nextApplied
+        if (fanModel.setManualSpeed(fanId, speed)) {
+            setDisplayedSpeedForFan(fanId, speed)
+        } else {
+            const failed = Object.assign({}, lastAppliedCurveSpeeds)
+            delete failed[fanId]
+            lastAppliedCurveSpeeds = failed
+        }
+
+        nextApplying = Object.assign({}, applyingCurveSpeeds)
+        delete nextApplying[fanId]
+        applyingCurveSpeeds = nextApplying
     }
 
     function defaultSensorId() {
@@ -202,12 +262,14 @@ Item {
                     onDisplayedSpeedPercentChanged: root.setDisplayedSpeedForFan(fanCard.fanId, displayedSpeedPercent)
                     onManualSpeedRequested: function(speed) {
                         root.setCurveAuto(fanCard.fanId, false)
+                        delete root.lastAppliedCurveSpeeds[fanCard.fanId]
                         root.setDisplayedSpeedForFan(fanCard.fanId, speed)
                         if (fanModel.setManualSpeed && !fanModel.setManualSpeed(fanCard.fanId, speed))
                             fanCard.displayedSpeedPercent = fanCard.speedPercent
                     }
                     onManualModeRequested: function(speed) {
                         root.setCurveAuto(fanCard.fanId, false)
+                        delete root.lastAppliedCurveSpeeds[fanCard.fanId]
                         root.setDisplayedSpeedForFan(fanCard.fanId, speed)
                         if (fanModel.setManualSpeed && !fanModel.setManualSpeed(fanCard.fanId, speed))
                             fanCard.displayedSpeedPercent = fanCard.speedPercent
@@ -255,7 +317,8 @@ Item {
                             const sensorIndex = root.findSensorIndex(sensorId)
                             if (sensorIndex >= 0)
                                 sensorCombo.currentIndex = sensorIndex
-                            root.selectedSensorId = sensorIndex >= 0 ? root.itemAt(sensorModel, sensorIndex).sensorId : sensorId
+                            root.selectedSensorId = sensorIndex >= 0
+                                ? root.itemAt(sensorModel, sensorIndex).sensorId : sensorId
                             root.updateSelectedSensorTemperature()
                         }
                     }
@@ -272,13 +335,16 @@ Item {
                             if (!sensor.sensorId)
                                 return
                             root.selectedSensorId = sensor.sensorId
-                            root.selectedSensorTemperature = sensor.temperature !== undefined && sensor.available !== false ? sensor.temperature : -1
+                            const sensorReadable = sensor.temperature !== undefined && sensor.available !== false
+                            root.selectedSensorTemperature = sensorReadable
+                                ? sensor.temperature : -1
                             if (fanCurveModel && fanCurveModel.setSensorIdForFan)
                                 fanCurveModel.setSensorIdForFan(root.selectedFanId, sensor.sensorId)
                             if (root.isCurveAuto(root.selectedFanId))
                                 root.applyCurve(root.selectedFanId)
                         }
                     }
+
                 }
 
                 FanCurveEditor {
@@ -310,7 +376,7 @@ Item {
         function onModelReset() { root.initializeSelection() }
         function onRowsInserted() { root.initializeSelection() }
         function onRowsRemoved() { root.initializeSelection() }
-        function onDataChanged() { root.initializeSelection() }
+        function onDataChanged() { root.updateSelectedSensorTemperature() }
     }
 
 
@@ -321,8 +387,10 @@ Item {
                 root.applyCurve(root.selectedFanId)
         }
         function onDataChanged() {
-            if (root.isCurveAuto(root.selectedFanId))
+            if (root.isCurveAuto(root.selectedFanId)) {
+                delete root.lastAppliedCurveSpeeds[root.selectedFanId]
                 root.applyCurve(root.selectedFanId)
+            }
         }
         function onSelectedFanIdChanged() {
             root.selectedFanId = fanCurveModel.selectedFanId
@@ -330,6 +398,9 @@ Item {
         }
         function onSelectedSensorIdChanged() {
             root.selectedSensorId = fanCurveModel.selectedSensorId
+        }
+        function onCurveAutoFansChanged() {
+            root.syncCurveAutoFromModel()
         }
     }
 
@@ -348,6 +419,7 @@ Item {
     }
 
     Component.onCompleted: {
+        syncCurveAutoFromModel()
         initializeSelection()
         updateSelectedSensorTemperature()
     }

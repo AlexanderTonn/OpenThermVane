@@ -4,7 +4,9 @@
 
 #include <QAbstractListModel>
 #include <QHash>
+#include <QSet>
 #include <QString>
+#include <QStringList>
 #include <QVariantList>
 
 namespace thermvane {
@@ -32,6 +34,9 @@ public:
     Q_INVOKABLE QString sensorIdForFan(const QString &fanId) const;
     Q_INVOKABLE void setSensorIdForFan(const QString &fanId, const QString &sensorId);
     Q_INVOKABLE double speedForFanTemperature(const QString &fanId, double temperature) const;
+    Q_INVOKABLE QStringList curveAutoFanIds() const;
+    Q_INVOKABLE bool curveAutoForFan(const QString &fanId) const;
+    Q_INVOKABLE void setCurveAutoForFan(const QString &fanId, bool enabled);
 
     int rowCount(const QModelIndex &parent = {}) const override;
     QVariant data(const QModelIndex &index, int role) const override;
@@ -45,15 +50,21 @@ signals:
     void selectedFanIdChanged();
     void selectedSensorIdChanged();
     void fanSensorBindingsChanged();
+    void curveAutoFansChanged();
 
 private:
     FanCurve &curveForFan(const QString &fanId);
     const FanCurve &curveForFan(const QString &fanId) const;
-    void resetSelectedCurve();
+    void loadSettings();
+    void saveSelectedFanId() const;
+    void saveCurveForFan(const QString &fanId) const;
+    void saveSensorIdForFan(const QString &fanId) const;
+    void saveCurveAutoFanIds() const;
 
     QString m_selectedFanId;
     QHash<QString, QString> m_sensorIdsByFanId;
     QHash<QString, FanCurve> m_curvesByFanId;
+    QSet<QString> m_curveAutoFanIds;
     FanCurve m_defaultCurve;
 };
 

@@ -139,7 +139,14 @@ if(APPLE)
     )
 endif()
 
-install(TARGETS ThermVane ThermVaneFanHelper
+install(TARGETS ThermVane
     BUNDLE DESTINATION .
     RUNTIME DESTINATION bin
 )
+
+if(APPLE)
+    install(TARGETS ThermVaneFanHelper
+        BUNDLE DESTINATION .
+        RUNTIME DESTINATION bin
+    )
+endif()
