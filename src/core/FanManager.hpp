@@ -3,6 +3,7 @@
 #include "hardware/HardwareTypes.hpp"
 
 #include <QObject>
+#include <QHash>
 #include <QList>
 #include <QPointer>
 
@@ -28,9 +29,11 @@ signals:
 
 private:
     void refresh();
+    void applyManualOverrides();
 
     QPointer<IHardwareBackend> m_backend;
     QList<FanInfo> m_fans;
+    QHash<QString, double> m_manualSpeedOverrides;
 };
 
 } // namespace thermvane

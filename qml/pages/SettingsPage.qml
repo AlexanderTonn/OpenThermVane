@@ -12,6 +12,30 @@ Item {
         spacing: 16
 
         GroupBox {
+            title: qsTr("About")
+            Layout.fillWidth: true
+
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 10
+
+                RowLayout {
+                    Layout.fillWidth: true
+
+                    Label {
+                        text: qsTr("Software version")
+                        Layout.fillWidth: true
+                    }
+
+                    Label {
+                        text: AppVersion && AppVersion.length > 0 ? AppVersion : qsTr("Unknown")
+                        opacity: 0.8
+                    }
+                }
+            }
+        }
+
+        GroupBox {
             title: qsTr("Safety")
             Layout.fillWidth: true
 

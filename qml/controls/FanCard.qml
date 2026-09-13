@@ -9,14 +9,25 @@ Rectangle {
     property string name
     property int rpm
     property real speedPercent
+    property real displayedSpeedPercent: speedPercent
     property bool automatic: true
+    property bool curveMode: false
     property bool supportsControl: false
     property bool supportsRpm: false
     property bool supportsFirmwareControl: false
     property bool compact: false
 
     signal manualSpeedRequested(real speed)
+    signal manualModeRequested(real speed)
     signal automaticRequested()
+
+    onSpeedPercentChanged: {
+        if (!sliderControl.dragging)
+            displayedSpeedPercent = speedPercent
+    }
+    onCurveModeChanged: displayedSpeedPercent = speedPercent
+    Component.onCompleted: displayedSpeedPercent = speedPercent
+
     width: 300
     height: 250
 
@@ -56,39 +67,63 @@ Rectangle {
             Layout.fillWidth: true
 
             Label {
-                text: root.automatic ? qsTr("Auto") : qsTr("Manual")
+                text: root.curveMode ? qsTr("Auto") : qsTr("Manual")
                 opacity: 0.8
             }
 
             ProgressBar {
                 from: 0
                 to: 100
-                value: root.speedPercent
+                value: root.displayedSpeedPercent
                 Layout.fillWidth: true
             }
 
             Label {
-                text: Math.round(root.speedPercent) + "%"
+                text: Math.round(root.displayedSpeedPercent) + "%"
                 horizontalAlignment: Text.AlignRight
                 Layout.preferredWidth: 44
             }
         }
 
         PercentageSlider {
+            id: sliderControl
             visible: !root.compact
-            value: root.speedPercent
-            enabledControl: root.supportsControl
+            value: root.displayedSpeedPercent
+            enabledControl: root.supportsControl && !root.curveMode
             Layout.fillWidth: true
-            onMoved: root.manualSpeedRequested(value)
+            onPreviewed: function(speed) {
+                root.displayedSpeedPercent = speed
+            }
+            onCommitted: function(speed) {
+                root.displayedSpeedPercent = speed
+                root.manualSpeedRequested(speed)
+            }
         }
 
-        Button {
+        RowLayout {
             visible: !root.compact
-            text: qsTr("Auto")
-            bottomPadding: 5
-            topPadding: 5
-            enabled: root.supportsFirmwareControl
-            onClicked: root.automaticRequested()
+            Layout.fillWidth: true
+            spacing: 8
+
+            Button {
+                text: qsTr("Manual")
+                bottomPadding: 5
+                topPadding: 5
+                enabled: root.supportsControl && root.curveMode
+                opacity: root.curveMode ? 0.8 : 1.0
+                Layout.fillWidth: true
+                onClicked: root.manualModeRequested(root.displayedSpeedPercent)
+            }
+
+            Button {
+                text: qsTr("Auto")
+                bottomPadding: 5
+                topPadding: 5
+                enabled: root.supportsControl && !root.curveMode
+                opacity: root.curveMode ? 1.0 : 0.8
+                Layout.fillWidth: true
+                onClicked: root.automaticRequested()
+            }
         }
     }
 }

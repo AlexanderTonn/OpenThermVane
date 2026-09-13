@@ -2,6 +2,8 @@
 
 #include "hardware/IHardwareBackend.hpp"
 
+#include <QHash>
+
 namespace thermvane {
 
 class MacHardwareBackend final : public IHardwareBackend
@@ -19,6 +21,11 @@ public:
 
 private:
     QList<SensorInfo> m_sensors;
+    QList<FanInfo> m_fans;
+    QHash<QString, double> m_autoFanModes;
+    QHash<QString, int> m_missingSensorScans;
+    QHash<QString, int> m_missingFanScans;
+    QHash<QString, double> m_pendingManualFanSpeeds;
 };
 
 } // namespace thermvane

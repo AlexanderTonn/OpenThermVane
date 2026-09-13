@@ -1,6 +1,11 @@
 #include "hardware/macos/MacHardwareBackend.hpp"
 
 #include <QCollator>
+#include <QCoreApplication>
+#include <QDateTime>
+#include <QDebug>
+#include <QFileInfo>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QSet>
 #include <QSysInfo>
@@ -9,13 +14,17 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <utility>
 
 #ifdef Q_OS_MACOS
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOKitLib.h>
+#include <sys/socket.h>
 #include <sys/sysctl.h>
+#include <sys/un.h>
+#include <unistd.h>
 #endif
 
 namespace thermvane {
@@ -31,6 +40,7 @@ constexpr int kAppleVendorTemperatureSensorUsage = 5;
 constexpr uint32_t kSmcSelector = 2;
 constexpr uint8_t kSmcCommandReadKeyInfo = 9;
 constexpr uint8_t kSmcCommandReadBytes = 5;
+constexpr uint8_t kSmcCommandWriteBytes = 6;
 
 extern "C" {
 CFTypeRef IOHIDEventSystemClientCreate(CFAllocatorRef allocator);
@@ -179,7 +189,7 @@ uint32_t keyCode(const QString &key)
 
 bool plausibleTemperature(double temperature)
 {
-    return std::isfinite(temperature) && temperature > 0.0 && temperature < 150.0;
+    return std::isfinite(temperature) && temperature >= 5.0 && temperature < 150.0;
 }
 
 double decodeSmcFloat(const std::array<uint8_t, 32> &bytes)
@@ -187,6 +197,23 @@ double decodeSmcFloat(const std::array<uint8_t, 32> &bytes)
     float nativeValue = 0.0F;
     std::memcpy(&nativeValue, bytes.data(), sizeof(nativeValue));
     if (plausibleTemperature(nativeValue)) {
+        return nativeValue;
+    }
+
+    const uint32_t bigEndianBits = (static_cast<uint32_t>(bytes[0]) << 24)
+        | (static_cast<uint32_t>(bytes[1]) << 16)
+        | (static_cast<uint32_t>(bytes[2]) << 8)
+        | static_cast<uint32_t>(bytes[3]);
+    float bigEndianValue = 0.0F;
+    std::memcpy(&bigEndianValue, &bigEndianBits, sizeof(bigEndianValue));
+    return bigEndianValue;
+}
+
+double decodeSmcFloatNumber(const std::array<uint8_t, 32> &bytes)
+{
+    float nativeValue = 0.0F;
+    std::memcpy(&nativeValue, bytes.data(), sizeof(nativeValue));
+    if (std::isfinite(nativeValue) && std::abs(nativeValue) < 1000000.0F) {
         return nativeValue;
     }
 
@@ -255,41 +282,101 @@ public:
 
     bool readTemperature(const QString &key, double &temperature) const
     {
-        if (!isOpen()) {
+        uint32_t type = 0;
+        std::array<uint8_t, 32> bytes = {};
+        if (!readKey(key, type, bytes)) {
             return false;
         }
 
-        SmcKeyData keyInfoInput;
-        SmcKeyData keyInfoOutput;
-        keyInfoInput.key = keyCode(key);
-        keyInfoInput.data8 = kSmcCommandReadKeyInfo;
-        if (keyInfoInput.key == 0 || !call(keyInfoInput, keyInfoOutput) || keyInfoOutput.result != 0) {
-            return false;
-        }
-
-        SmcKeyData valueInput;
-        SmcKeyData valueOutput;
-        valueInput.key = keyInfoInput.key;
-        valueInput.keyInfo = keyInfoOutput.keyInfo;
-        valueInput.data8 = kSmcCommandReadBytes;
-        if (!call(valueInput, valueOutput) || valueOutput.result != 0) {
-            return false;
-        }
-
-        const uint32_t type = keyInfoOutput.keyInfo.dataType;
         if (type == fourCharCode("flt ")) {
-            temperature = decodeSmcFloat(valueOutput.bytes);
+            temperature = decodeSmcFloat(bytes);
         } else if (type == fourCharCode("fpe2")) {
-            temperature = decodeSmcFixedPoint(valueOutput.bytes, 2);
+            temperature = decodeSmcFixedPoint(bytes, 2);
         } else if (type == fourCharCode("sp78")) {
-            const int16_t raw = static_cast<int16_t>((static_cast<uint16_t>(valueOutput.bytes[0]) << 8)
-                                                     | static_cast<uint16_t>(valueOutput.bytes[1]));
+            const int16_t raw = static_cast<int16_t>((static_cast<uint16_t>(bytes[0]) << 8)
+                                                     | static_cast<uint16_t>(bytes[1]));
             temperature = static_cast<double>(raw) / 256.0;
         } else {
             return false;
         }
 
         return plausibleTemperature(temperature);
+    }
+
+    bool readNumber(const QString &key, double &number) const
+    {
+        uint32_t type = 0;
+        std::array<uint8_t, 32> bytes = {};
+        if (!readKey(key, type, bytes)) {
+            return false;
+        }
+
+        if (type == fourCharCode("flt ")) {
+            number = decodeSmcFloatNumber(bytes);
+        } else if (type == fourCharCode("fpe2")) {
+            number = decodeSmcFixedPoint(bytes, 2);
+        } else if (type == fourCharCode("ui8 ")) {
+            number = bytes[0];
+        } else if (type == fourCharCode("ui16")) {
+            number = (static_cast<uint16_t>(bytes[0]) << 8) | static_cast<uint16_t>(bytes[1]);
+        } else if (type == fourCharCode("ui32")) {
+            number = (static_cast<uint32_t>(bytes[0]) << 24)
+                | (static_cast<uint32_t>(bytes[1]) << 16)
+                | (static_cast<uint32_t>(bytes[2]) << 8)
+                | static_cast<uint32_t>(bytes[3]);
+        } else {
+            return false;
+        }
+
+        return std::isfinite(number);
+    }
+
+    bool readString(const QString &key, QString &text) const
+    {
+        uint32_t type = 0;
+        std::array<uint8_t, 32> bytes = {};
+        SmcKeyInfo info;
+        if (!readKey(key, type, bytes, &info)) {
+            return false;
+        }
+
+        const qsizetype length = static_cast<qsizetype>(std::min<uint32_t>(info.dataSize, bytes.size()));
+        QByteArray data(reinterpret_cast<const char *>(bytes.data()), length);
+        const int nulIndex = data.indexOf('\0');
+        if (nulIndex >= 0) {
+            data.truncate(nulIndex);
+        }
+
+        text = QString::fromUtf8(data).simplified();
+        return !text.isEmpty();
+    }
+
+    bool writeNumber(const QString &key, double number) const
+    {
+        SmcKeyInfo info;
+        if (!readKeyInfo(key, info)) {
+            return false;
+        }
+
+        std::array<uint8_t, 32> bytes = {};
+        if (info.dataType == fourCharCode("flt ")) {
+            const float value = static_cast<float>(number);
+            std::memcpy(bytes.data(), &value, sizeof(value));
+        } else if (info.dataType == fourCharCode("fpe2")) {
+            const uint16_t raw = static_cast<uint16_t>(std::lround(std::clamp(number, 0.0, 65535.0 / 4.0) * 4.0));
+            bytes[0] = static_cast<uint8_t>((raw >> 8) & 0xff);
+            bytes[1] = static_cast<uint8_t>(raw & 0xff);
+        } else if (info.dataType == fourCharCode("ui8 ")) {
+            bytes[0] = static_cast<uint8_t>(std::lround(std::clamp(number, 0.0, 255.0)));
+        } else if (info.dataType == fourCharCode("ui16")) {
+            const uint16_t raw = static_cast<uint16_t>(std::lround(std::clamp(number, 0.0, 65535.0)));
+            bytes[0] = static_cast<uint8_t>((raw >> 8) & 0xff);
+            bytes[1] = static_cast<uint8_t>(raw & 0xff);
+        } else {
+            return false;
+        }
+
+        return writeKey(key, info, bytes);
     }
 
 private:
@@ -312,6 +399,64 @@ private:
                 return;
             }
         }
+    }
+
+
+    bool readKeyInfo(const QString &key, SmcKeyInfo &info) const
+    {
+        if (!isOpen()) {
+            return false;
+        }
+
+        SmcKeyData input;
+        SmcKeyData output;
+        input.key = keyCode(key);
+        input.data8 = kSmcCommandReadKeyInfo;
+        if (input.key == 0 || !call(input, output) || output.result != 0) {
+            return false;
+        }
+
+        info = output.keyInfo;
+        return info.dataSize > 0 && info.dataSize <= 32;
+    }
+
+    bool readKey(const QString &key, uint32_t &type, std::array<uint8_t, 32> &bytes, SmcKeyInfo *keyInfo = nullptr) const
+    {
+        SmcKeyInfo info;
+        if (!readKeyInfo(key, info)) {
+            return false;
+        }
+
+        SmcKeyData input;
+        SmcKeyData output;
+        input.key = keyCode(key);
+        input.keyInfo = info;
+        input.data8 = kSmcCommandReadBytes;
+        if (!call(input, output) || output.result != 0) {
+            return false;
+        }
+
+        type = info.dataType;
+        bytes = output.bytes;
+        if (keyInfo) {
+            *keyInfo = info;
+        }
+        return true;
+    }
+
+    bool writeKey(const QString &key, const SmcKeyInfo &info, const std::array<uint8_t, 32> &bytes) const
+    {
+        if (!isOpen()) {
+            return false;
+        }
+
+        SmcKeyData input;
+        SmcKeyData output;
+        input.key = keyCode(key);
+        input.keyInfo = info;
+        input.data8 = kSmcCommandWriteBytes;
+        input.bytes = bytes;
+        return input.key != 0 && call(input, output) && output.result == 0;
     }
 
     bool call(const SmcKeyData &input, SmcKeyData &output) const
@@ -731,6 +876,479 @@ bool appendSmcTemperatureSensors(QList<SensorInfo> &sensors)
     return foundSensor;
 }
 
+QString smcFanKey(int fanIndex, const QString &suffix)
+{
+    return QStringLiteral("F%1%2").arg(fanIndex).arg(suffix);
+}
+
+QString smcFanId(int fanIndex)
+{
+    return QStringLiteral("smc-fan-%1").arg(fanIndex);
+}
+
+
+QString shellQuote(const QString &value)
+{
+    QString escaped = value;
+    escaped.replace(QStringLiteral("'"), QStringLiteral("'\\''"));
+    return QStringLiteral("'") + escaped + QStringLiteral("'");
+}
+
+QString appleScriptString(const QString &value)
+{
+    QString escaped = value;
+    escaped.replace(QStringLiteral("\\"), QStringLiteral("\\\\"));
+    escaped.replace(QStringLiteral("\""), QStringLiteral("\\\""));
+    return QStringLiteral("\"") + escaped + QStringLiteral("\"");
+}
+
+QString privilegedHelperSocketPath()
+{
+    return QStringLiteral("/tmp/thermvane-fan-helper-%1.sock").arg(getuid());
+}
+
+bool writeAllToSocket(int socketFd, const QByteArray &message)
+{
+    const char *data = message.constData();
+    qsizetype remaining = message.size();
+    while (remaining > 0) {
+        const ssize_t written = write(socketFd, data, static_cast<size_t>(remaining));
+        if (written <= 0) {
+            return false;
+        }
+        data += written;
+        remaining -= written;
+    }
+    return true;
+}
+
+bool sendCommandToHelperServer(const QByteArray &command)
+{
+    const QByteArray socketPath = privilegedHelperSocketPath().toUtf8();
+    if (socketPath.size() >= static_cast<int>(sizeof(sockaddr_un::sun_path))) {
+        return false;
+    }
+
+    const int socketFd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (socketFd < 0) {
+        return false;
+    }
+
+    timeval timeout = {1, 0};
+    setsockopt(socketFd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    setsockopt(socketFd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+
+    sockaddr_un address = {};
+    address.sun_family = AF_UNIX;
+    std::strncpy(address.sun_path, socketPath.constData(), sizeof(address.sun_path) - 1);
+
+    if (connect(socketFd, reinterpret_cast<sockaddr *>(&address), sizeof(address)) != 0) {
+        close(socketFd);
+        return false;
+    }
+
+    if (!writeAllToSocket(socketFd, command)) {
+        close(socketFd);
+        return false;
+    }
+
+    char response[128] = {};
+    const ssize_t count = read(socketFd, response, sizeof(response) - 1);
+    close(socketFd);
+    if (count <= 0) {
+        return false;
+    }
+
+    const QByteArray reply(response, count);
+    if (!reply.startsWith("OK")) {
+        qWarning() << "Fan helper command failed" << reply.trimmed();
+        return false;
+    }
+
+    return true;
+}
+
+bool pingHelperServer()
+{
+    return sendCommandToHelperServer(QByteArrayLiteral("PING\n"));
+}
+
+bool sendFanSpeedToHelperServer(const QString &fanId, double percent)
+{
+    const QByteArray command = QByteArrayLiteral("SET ")
+        + fanId.toUtf8()
+        + QByteArrayLiteral(" ")
+        + QByteArray::number(percent, 'f', 2)
+        + QByteArrayLiteral("\n");
+    return sendCommandToHelperServer(command);
+}
+
+bool startPrivilegedHelperServer(const QString &fanId, double percent)
+{
+    if (qEnvironmentVariableIsSet("THERMVANE_NO_ADMIN_FALLBACK")) {
+        return false;
+    }
+
+    static qint64 lastStartRequestMs = 0;
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    if (nowMs - lastStartRequestMs < 15000) {
+        return true;
+    }
+    lastStartRequestMs = nowMs;
+
+    const QString helperPath = QCoreApplication::applicationDirPath() + QStringLiteral("/ThermVaneFanHelper");
+    if (!QFileInfo::exists(helperPath)) {
+        qWarning() << "Fan helper not found" << helperPath;
+        return false;
+    }
+
+    const QString logPath = QStringLiteral("/tmp/thermvane-fan-helper-%1.log").arg(getuid());
+    const QString command = QStringLiteral("cd / && ")
+        + shellQuote(helperPath)
+        + QStringLiteral(" --server ")
+        + shellQuote(privilegedHelperSocketPath())
+        + QStringLiteral(" </dev/null >> ")
+        + shellQuote(logPath)
+        + QStringLiteral(" 2>&1 & sleep 0.4; ")
+        + shellQuote(helperPath)
+        + QStringLiteral(" ")
+        + shellQuote(fanId)
+        + QStringLiteral(" ")
+        + shellQuote(QString::number(percent, 'f', 2))
+        + QStringLiteral(" >> ")
+        + shellQuote(logPath)
+        + QStringLiteral(" 2>&1");
+    const QString script = QStringLiteral("do shell script ")
+        + appleScriptString(command)
+        + QStringLiteral(" with administrator privileges");
+
+    if (!QProcess::startDetached(QStringLiteral("/usr/bin/osascript"), {QStringLiteral("-e"), script})) {
+        qWarning() << "Could not start privileged fan helper request";
+        return false;
+    }
+
+    return true;
+}
+
+bool runPrivilegedSetFanSpeed(const QString &fanId, double percent)
+{
+    if (sendFanSpeedToHelperServer(fanId, percent)) {
+        return true;
+    }
+
+    if (!startPrivilegedHelperServer(fanId, percent)) {
+        return false;
+    }
+
+    // The administrator dialog is asynchronous. Keep the requested UI state;
+    // the next manual commit will use the helper server once it is ready.
+    return true;
+}
+
+int fanIndexFromId(const QString &fanId)
+{
+    const QRegularExpression pattern(QStringLiteral("^smc-fan-(\\d+)$"));
+    const auto match = pattern.match(fanId);
+    if (!match.hasMatch()) {
+        return -1;
+    }
+
+    bool ok = false;
+    const int index = match.captured(1).toInt(&ok);
+    return ok ? index : -1;
+}
+
+QString fanModeKey(const AppleSmcReader &smc, int fanIndex)
+{
+    const QString upperKey = smcFanKey(fanIndex, QStringLiteral("Md"));
+    double mode = 0.0;
+    if (smc.readNumber(upperKey, mode)) {
+        return upperKey;
+    }
+
+    const QString lowerKey = smcFanKey(fanIndex, QStringLiteral("md"));
+    if (smc.readNumber(lowerKey, mode)) {
+        return lowerKey;
+    }
+
+    return {};
+}
+
+bool readFanCount(const AppleSmcReader &smc, int &fanCount)
+{
+    double value = 0.0;
+    if (smc.readNumber(QStringLiteral("FNum"), value)) {
+        fanCount = std::clamp(static_cast<int>(std::lround(value)), 0, 8);
+        return true;
+    }
+
+    fanCount = 0;
+    for (int index = 0; index < 8; ++index) {
+        double rpm = 0.0;
+        if (smc.readNumber(smcFanKey(index, QStringLiteral("Ac")), rpm)) {
+            fanCount = index + 1;
+        }
+    }
+
+    return fanCount > 0;
+}
+
+
+bool readFanSwitchMask(const AppleSmcReader &smc, uint16_t &mask)
+{
+    double value = 0.0;
+    if (!smc.readNumber(QStringLiteral("FS! "), value)
+        || !std::isfinite(value)
+        || value < 0.0
+        || value > 65535.0) {
+        return false;
+    }
+
+    mask = static_cast<uint16_t>(std::lround(value));
+    return true;
+}
+
+QString readableFanName(const AppleSmcReader &smc, int fanIndex, int fanCount)
+{
+    QString smcName;
+    if (smc.readString(smcFanKey(fanIndex, QStringLiteral("ID")), smcName)) {
+        const QRegularExpression printable(QStringLiteral("^[\\x20-\\x7e]+$"));
+        if (printable.match(smcName).hasMatch()) {
+            return smcName;
+        }
+    }
+
+    if (fanCount == 1) {
+        return QStringLiteral("MacBook Fan");
+    }
+
+    if (fanIndex == 0) {
+        return QStringLiteral("Left Fan");
+    }
+
+    if (fanIndex == 1) {
+        return QStringLiteral("Right Fan");
+    }
+
+    return QStringLiteral("Fan %1").arg(fanIndex + 1);
+}
+
+void appendSmcFans(QList<FanInfo> &fans, QHash<QString, double> *autoFanModes, QHash<QString, double> *pendingManualFanSpeeds)
+{
+    AppleSmcReader smc;
+    if (!smc.isOpen()) {
+        return;
+    }
+
+    int fanCount = 0;
+    if (!readFanCount(smc, fanCount)) {
+        return;
+    }
+
+    uint16_t manualFanMask = 0;
+    const bool manualFanMaskReadable = readFanSwitchMask(smc, manualFanMask);
+
+    for (int index = 0; index < fanCount; ++index) {
+        double rpm = 0.0;
+        if (!smc.readNumber(smcFanKey(index, QStringLiteral("Ac")), rpm)
+            || !std::isfinite(rpm)
+            || rpm < 0.0
+            || rpm > 20000.0) {
+            continue;
+        }
+
+        double minRpm = 0.0;
+        double maxRpm = 0.0;
+        const bool minReadable = smc.readNumber(smcFanKey(index, QStringLiteral("Mn")), minRpm);
+        const bool maxReadable = smc.readNumber(smcFanKey(index, QStringLiteral("Mx")), maxRpm);
+        const bool limitsReadable = minReadable
+            && maxReadable
+            && std::isfinite(minRpm)
+            && std::isfinite(maxRpm)
+            && minRpm >= 0.0
+            && maxRpm > minRpm
+            && maxRpm <= 20000.0;
+
+        if (limitsReadable && rpm > maxRpm * 1.25) {
+            continue;
+        }
+
+        double targetRpm = rpm;
+        bool targetReadable = smc.readNumber(smcFanKey(index, QStringLiteral("Tg")), targetRpm)
+            && std::isfinite(targetRpm)
+            && targetRpm >= 0.0
+            && targetRpm <= 20000.0;
+        if (targetReadable && limitsReadable && targetRpm > maxRpm * 1.25) {
+            targetReadable = false;
+            targetRpm = rpm;
+        }
+
+        const QString modeKey = fanModeKey(smc, index);
+        double mode = 0.0;
+        const bool modeReadable = !modeKey.isEmpty() && smc.readNumber(modeKey, mode);
+        const bool manualBySwitch = manualFanMaskReadable && ((manualFanMask & (1U << index)) != 0);
+
+        FanInfo fan;
+        fan.id = smcFanId(index);
+        fan.name = readableFanName(smc, index, fanCount);
+        fan.rpm = static_cast<int>(std::lround(rpm));
+        fan.automatic = manualFanMaskReadable
+            ? !manualBySwitch
+            : (!modeReadable || static_cast<int>(std::lround(mode)) != 1);
+        fan.capabilities.rpmReading = true;
+        fan.capabilities.manualControl = (manualFanMaskReadable || modeReadable) && targetReadable && limitsReadable;
+        fan.capabilities.firmwareControl = manualFanMaskReadable || modeReadable;
+        fan.capabilities.zeroRpm = limitsReadable && minRpm <= 0.0;
+        fan.capabilities.pwmControl = false;
+
+        if (autoFanModes && !manualFanMaskReadable && modeReadable && fan.automatic) {
+            autoFanModes->insert(fan.id, mode);
+        }
+
+        if (limitsReadable) {
+            const double referenceRpm = fan.automatic ? rpm : targetRpm;
+            fan.speedPercent = std::clamp((referenceRpm - minRpm) * 100.0 / (maxRpm - minRpm), 0.0, 100.0);
+        } else {
+            fan.speedPercent = 0.0;
+        }
+
+        if (pendingManualFanSpeeds) {
+            if (!fan.automatic && pendingManualFanSpeeds->contains(fan.id)) {
+                const double pendingPercent = pendingManualFanSpeeds->value(fan.id);
+                if (!targetReadable || std::abs(fan.speedPercent - pendingPercent) <= 3.0) {
+                    fan.speedPercent = pendingPercent;
+                }
+            } else if (fan.automatic) {
+                pendingManualFanSpeeds->remove(fan.id);
+            }
+        }
+
+        fans.append(std::move(fan));
+    }
+}
+
+bool writeFanMode(const AppleSmcReader &smc, int fanIndex, double mode)
+{
+    const QString upperKey = smcFanKey(fanIndex, QStringLiteral("Md"));
+    if (smc.writeNumber(upperKey, mode)) {
+        return true;
+    }
+
+    const QString lowerKey = smcFanKey(fanIndex, QStringLiteral("md"));
+    return smc.writeNumber(lowerKey, mode);
+}
+
+
+bool writeFanSwitchMask(const AppleSmcReader &smc, uint16_t mask)
+{
+    return smc.writeNumber(QStringLiteral("FS! "), static_cast<double>(mask));
+}
+
+bool writeManualFanSwitch(const AppleSmcReader &smc, int fanIndex, bool manual)
+{
+    uint16_t mask = 0;
+    if (readFanSwitchMask(smc, mask)) {
+        const uint16_t fanBit = static_cast<uint16_t>(1U << fanIndex);
+        if (manual) {
+            mask = static_cast<uint16_t>(mask | fanBit);
+        } else {
+            mask = static_cast<uint16_t>(mask & ~fanBit);
+        }
+        return writeFanSwitchMask(smc, mask);
+    }
+
+    return writeFanMode(smc, fanIndex, manual ? 1.0 : 0.0);
+}
+
+bool readFanLimits(const AppleSmcReader &smc, int fanIndex, double &minRpm, double &maxRpm)
+{
+    return smc.readNumber(smcFanKey(fanIndex, QStringLiteral("Mn")), minRpm)
+        && smc.readNumber(smcFanKey(fanIndex, QStringLiteral("Mx")), maxRpm)
+        && std::isfinite(minRpm)
+        && std::isfinite(maxRpm)
+        && minRpm >= 0.0
+        && maxRpm > minRpm
+        && maxRpm <= 20000.0;
+}
+
+void stabilizeSensorReadings(QList<SensorInfo> &current, const QList<SensorInfo> &previous, QHash<QString, int> &missingScans)
+{
+    QHash<QString, SensorInfo> previousById;
+    for (const SensorInfo &sensor : previous) {
+        previousById.insert(sensor.id, sensor);
+    }
+
+    QSet<QString> currentIds;
+    for (SensorInfo &sensor : current) {
+        currentIds.insert(sensor.id);
+        const auto previousIt = previousById.constFind(sensor.id);
+        if (previousIt == previousById.cend()) {
+            missingScans.remove(sensor.id);
+            continue;
+        }
+
+        const double previousTemperature = previousIt->temperatureCelsius;
+        const bool suspiciousDrop = previousTemperature > 20.0
+            && (sensor.temperatureCelsius < 10.0 || previousTemperature - sensor.temperatureCelsius > 25.0);
+        if (suspiciousDrop) {
+            sensor.temperatureCelsius = previousTemperature;
+            sensor.source = previousIt->source;
+        }
+
+        missingScans.remove(sensor.id);
+    }
+
+    for (const SensorInfo &sensor : previous) {
+        if (currentIds.contains(sensor.id)) {
+            continue;
+        }
+
+        const int missingCount = missingScans.value(sensor.id, 0) + 1;
+        missingScans.insert(sensor.id, missingCount);
+        if (missingCount <= 3) {
+            current.append(sensor);
+        }
+    }
+}
+
+void stabilizeFanReadings(QList<FanInfo> &current, const QList<FanInfo> &previous, QHash<QString, int> &missingScans)
+{
+    QHash<QString, FanInfo> previousById;
+    for (const FanInfo &fan : previous) {
+        previousById.insert(fan.id, fan);
+    }
+
+    QSet<QString> currentIds;
+    for (FanInfo &fan : current) {
+        currentIds.insert(fan.id);
+        const auto previousIt = previousById.constFind(fan.id);
+        if (previousIt == previousById.cend()) {
+            missingScans.remove(fan.id);
+            continue;
+        }
+
+        if (fan.rpm < 0 || fan.rpm > 20000 || std::abs(fan.rpm - previousIt->rpm) > 8000) {
+            fan.rpm = previousIt->rpm;
+            fan.speedPercent = previousIt->speedPercent;
+            fan.automatic = previousIt->automatic;
+        }
+
+        missingScans.remove(fan.id);
+    }
+
+    for (const FanInfo &fan : previous) {
+        if (currentIds.contains(fan.id)) {
+            continue;
+        }
+
+        const int missingCount = missingScans.value(fan.id, 0) + 1;
+        missingScans.insert(fan.id, missingCount);
+        if (missingCount <= 3) {
+            current.append(fan);
+        }
+    }
+}
+
 bool appendIoRegistryTemperatureSensors(QList<SensorInfo> &sensors, QSet<QString> &seenNames)
 {
     io_iterator_t iterator = IO_OBJECT_NULL;
@@ -822,7 +1440,7 @@ void appendTemperatureServices(CFArrayRef serviceArray, QList<SensorInfo> &senso
         }
 
         const double temperature = IOHIDEventGetFloatValue(event.get(), kIOHIDEventFieldTemperatureLevel);
-        if (temperature <= 0.0 || temperature > 150.0) {
+        if (!plausibleTemperature(temperature)) {
             continue;
         }
 
@@ -915,7 +1533,10 @@ MacHardwareBackend::MacHardwareBackend(QObject *parent)
 void MacHardwareBackend::scan()
 {
 #ifdef Q_OS_MACOS
+    const QList<SensorInfo> previousSensors = m_sensors;
+    const QList<FanInfo> previousFans = m_fans;
     m_sensors.clear();
+    m_fans.clear();
 
     if (QSysInfo::currentCpuArchitecture() != QStringLiteral("arm64")) {
         emit hardwareChanged();
@@ -923,6 +1544,7 @@ void MacHardwareBackend::scan()
     }
 
     appendSmcTemperatureSensors(m_sensors);
+    appendSmcFans(m_fans, &m_autoFanModes, &m_pendingManualFanSpeeds);
 
     QSet<QString> registrySeenNames;
 
@@ -949,6 +1571,9 @@ void MacHardwareBackend::scan()
 
     appendIoRegistryTemperatureSensors(m_sensors, registrySeenNames);
 
+    stabilizeSensorReadings(m_sensors, previousSensors, m_missingSensorScans);
+    stabilizeFanReadings(m_fans, previousFans, m_missingFanScans);
+
     QCollator collator;
     collator.setNumericMode(true);
 
@@ -971,19 +1596,107 @@ QList<SensorInfo> MacHardwareBackend::sensors() const
 
 QList<FanInfo> MacHardwareBackend::fans() const
 {
-    return {};
+    return m_fans;
 }
 
 bool MacHardwareBackend::setFanSpeed(const QString &fanId, double percent)
 {
-    Q_UNUSED(fanId)
-    Q_UNUSED(percent)
+#ifdef Q_OS_MACOS
+    const int fanIndex = fanIndexFromId(fanId);
+    if (fanIndex < 0) {
+        return false;
+    }
+
+    const double clampedPercent = std::clamp(percent, 0.0, 100.0);
+    if (sendFanSpeedToHelperServer(fanId, clampedPercent)) {
+        m_pendingManualFanSpeeds.insert(fanId, clampedPercent);
+        scan();
+        return true;
+    }
+
+    AppleSmcReader smc;
+    if (!smc.isOpen()) {
+        return false;
+    }
+
+    double minRpm = 0.0;
+    double maxRpm = 0.0;
+    if (!readFanLimits(smc, fanIndex, minRpm, maxRpm)) {
+        return false;
+    }
+
+    const double targetRpm = minRpm + ((maxRpm - minRpm) * clampedPercent / 100.0);
+
+    const QString modeKey = fanModeKey(smc, fanIndex);
+    double currentMode = 0.0;
+    if (!modeKey.isEmpty() && smc.readNumber(modeKey, currentMode) && static_cast<int>(std::lround(currentMode)) != 1) {
+        m_autoFanModes.insert(fanId, currentMode);
+    }
+
+    smc.writeNumber(QStringLiteral("Ftst"), 1.0);
+    const bool modeSet = writeManualFanSwitch(smc, fanIndex, true);
+    const bool targetSet = smc.writeNumber(smcFanKey(fanIndex, QStringLiteral("Tg")), targetRpm);
+    const bool targetSetAfterMode = targetSet || smc.writeNumber(smcFanKey(fanIndex, QStringLiteral("Tg")), targetRpm);
+
+    if (modeSet && targetSetAfterMode) {
+        m_pendingManualFanSpeeds.insert(fanId, clampedPercent);
+        scan();
+        return true;
+    }
+
+    qWarning() << "Direct SMC fan write failed; trying privileged helper"
+               << "fan" << fanId
+               << "percent" << clampedPercent
+               << "targetRpm" << targetRpm
+               << "modeSet" << modeSet
+               << "targetSet" << targetSetAfterMode;
+
+    if (runPrivilegedSetFanSpeed(fanId, clampedPercent)) {
+        m_pendingManualFanSpeeds.insert(fanId, clampedPercent);
+        scan();
+        return true;
+    }
+
+    qWarning() << "Failed to set fan speed"
+               << "fan" << fanId
+               << "percent" << clampedPercent;
+#endif
+
     return false;
 }
 
 bool MacHardwareBackend::restoreAutomaticControl(const QString &fanId)
 {
-    Q_UNUSED(fanId)
+#ifdef Q_OS_MACOS
+    const int fanIndex = fanIndexFromId(fanId);
+    if (fanIndex < 0) {
+        return false;
+    }
+
+    AppleSmcReader smc;
+    if (!smc.isOpen()) {
+        return false;
+    }
+
+    double autoMode = m_autoFanModes.value(fanId, 0.0);
+    const int roundedAutoMode = static_cast<int>(std::lround(autoMode));
+    if (roundedAutoMode != 0 && roundedAutoMode != 3) {
+        autoMode = 0.0;
+    }
+
+    const bool modeSet = writeManualFanSwitch(smc, fanIndex, false);
+    if (!modeSet && autoMode != 0.0) {
+        writeFanMode(smc, fanIndex, autoMode);
+    }
+    smc.writeNumber(QStringLiteral("Ftst"), 0.0);
+
+    if (modeSet) {
+        m_pendingManualFanSpeeds.remove(fanId);
+        scan();
+        return true;
+    }
+#endif
+
     return false;
 }
 

@@ -52,6 +52,7 @@ void SensorModel::setManager(SensorManager *manager)
     }
 
     emit refreshIntervalMsChanged();
+    emit countChanged();
 }
 
 int SensorModel::refreshIntervalMs() const
@@ -64,6 +65,11 @@ void SensorModel::setRefreshIntervalMs(int intervalMs)
     if (m_manager) {
         m_manager->setRefreshIntervalMs(intervalMs);
     }
+}
+
+int SensorModel::count() const
+{
+    return rowCount();
 }
 
 int SensorModel::rowCount(const QModelIndex &parent) const
@@ -112,6 +118,21 @@ QHash<int, QByteArray> SensorModel::roleNames() const
     };
 }
 
+QVariantMap SensorModel::get(int row) const
+{
+    QVariantMap item;
+    const QModelIndex modelIndex = index(row);
+    if (!modelIndex.isValid()) {
+        return item;
+    }
+
+    const auto roles = roleNames();
+    for (auto it = roles.cbegin(); it != roles.cend(); ++it) {
+        item.insert(QString::fromUtf8(it.value()), data(modelIndex, it.key()));
+    }
+    return item;
+}
+
 
 void SensorModel::replaceSensors(QList<SensorInfo> sensors)
 {
@@ -126,6 +147,7 @@ void SensorModel::replaceSensors(QList<SensorInfo> sensors)
     beginResetModel();
     m_sensors = std::move(sensors);
     endResetModel();
+    emit countChanged();
 }
 
 } // namespace thermvane

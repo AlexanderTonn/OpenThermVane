@@ -110,6 +110,9 @@ qt_add_translations(ThermVane
 )
 
 target_include_directories(ThermVane PRIVATE src)
+target_compile_definitions(ThermVane PRIVATE
+    THERMVANE_VERSION="${PROJECT_VERSION}"
+)
 
 target_link_libraries(ThermVane PRIVATE
     Qt6::Core
@@ -126,9 +129,17 @@ if(APPLE)
         ${IOKIT_FRAMEWORK}
         ${COREFOUNDATION_FRAMEWORK}
     )
+
+    add_executable(ThermVaneFanHelper
+        src/helper/FanSpeedHelper.cpp
+    )
+    target_link_libraries(ThermVaneFanHelper PRIVATE
+        ${IOKIT_FRAMEWORK}
+        ${COREFOUNDATION_FRAMEWORK}
+    )
 endif()
 
-install(TARGETS ThermVane
+install(TARGETS ThermVane ThermVaneFanHelper
     BUNDLE DESTINATION .
     RUNTIME DESTINATION bin
 )

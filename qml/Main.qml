@@ -74,6 +74,7 @@ ApplicationWindow {
             }
             FanPage {
                 fanModel: window.fanModel
+                sensorModel: window.sensorModel
                 fanCurveModel: window.fanCurveModel
             }
             SensorPage {

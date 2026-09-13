@@ -2,6 +2,8 @@
 
 #include "hardware/IHardwareBackend.hpp"
 
+#include <algorithm>
+
 namespace thermvane {
 
 FanManager::FanManager(QObject *parent)
@@ -20,6 +22,7 @@ void FanManager::setBackend(IHardwareBackend *backend)
     }
 
     m_backend = backend;
+    m_manualSpeedOverrides.clear();
     if (m_backend) {
         connect(m_backend, &IHardwareBackend::hardwareChanged, this, &FanManager::refresh);
     }
@@ -35,18 +38,45 @@ QList<FanInfo> FanManager::fans() const
 
 bool FanManager::setManualSpeed(const QString &fanId, double percent)
 {
-    return m_backend && m_backend->setFanSpeed(fanId, percent);
+    if (!m_backend || !m_backend->setFanSpeed(fanId, percent)) {
+        return false;
+    }
+
+    m_manualSpeedOverrides.insert(fanId, std::clamp(percent, 0.0, 100.0));
+    applyManualOverrides();
+    emit fansChanged();
+    return true;
 }
 
 bool FanManager::restoreAutomaticControl(const QString &fanId)
 {
-    return m_backend && m_backend->restoreAutomaticControl(fanId);
+    if (!m_backend || !m_backend->restoreAutomaticControl(fanId)) {
+        return false;
+    }
+
+    m_manualSpeedOverrides.remove(fanId);
+    refresh();
+    return true;
 }
 
 void FanManager::refresh()
 {
     m_fans = m_backend ? m_backend->fans() : QList<FanInfo> {};
+    applyManualOverrides();
     emit fansChanged();
+}
+
+void FanManager::applyManualOverrides()
+{
+    for (FanInfo &fan : m_fans) {
+        const auto overrideIt = m_manualSpeedOverrides.constFind(fan.id);
+        if (overrideIt == m_manualSpeedOverrides.cend()) {
+            continue;
+        }
+
+        fan.speedPercent = overrideIt.value();
+        fan.automatic = false;
+    }
 }
 
 } // namespace thermvane

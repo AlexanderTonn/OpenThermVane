@@ -1,5 +1,6 @@
 #include "app/Application.hpp"
 #include "app/LanguageManager.hpp"
+#include "hardware/macos/MacHardwareBackend.hpp"
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
@@ -13,10 +14,10 @@
 
 namespace {
 
-bool hasListSensorsOption(int argc, char *argv[])
+bool hasOption(int argc, char *argv[], const QString &option)
 {
     for (int index = 1; index < argc; ++index) {
-        if (QString::fromLocal8Bit(argv[index]) == QStringLiteral("--list-sensors")) {
+        if (QString::fromLocal8Bit(argv[index]) == option) {
             return true;
         }
     }
@@ -24,11 +25,53 @@ bool hasListSensorsOption(int argc, char *argv[])
     return false;
 }
 
+
+int setFanSpeedCli(int argc, char *argv[])
+{
+    QCoreApplication app(argc, argv);
+    QCoreApplication::setOrganizationName(QStringLiteral("OpenThermVane"));
+    QCoreApplication::setApplicationName(QStringLiteral("ThermVane"));
+    QCoreApplication::setApplicationVersion(QStringLiteral(THERMVANE_VERSION));
+    qputenv("THERMVANE_NO_ADMIN_FALLBACK", "1");
+
+    QString fanId;
+    double percent = 0.0;
+    bool percentOk = false;
+    const QStringList arguments = app.arguments();
+    for (int index = 1; index < arguments.size(); ++index) {
+        if (arguments.at(index) == QStringLiteral("--set-fan-speed") && index + 2 < arguments.size()) {
+            fanId = arguments.at(index + 1);
+            percent = arguments.at(index + 2).toDouble(&percentOk);
+            break;
+        }
+    }
+
+    QTextStream err(stderr);
+    if (fanId.isEmpty() || !percentOk) {
+        err << "Usage: ThermVane --set-fan-speed <fan-id> <percent>\n";
+        return 2;
+    }
+
+#if defined(Q_OS_MACOS)
+    thermvane::MacHardwareBackend backend;
+    if (backend.setFanSpeed(fanId, percent)) {
+        return 0;
+    }
+#else
+    Q_UNUSED(fanId)
+    Q_UNUSED(percent)
+#endif
+
+    err << "Failed to set fan speed\n";
+    return 1;
+}
+
 int listSensors(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
     QCoreApplication::setOrganizationName(QStringLiteral("OpenThermVane"));
     QCoreApplication::setApplicationName(QStringLiteral("ThermVane"));
+    QCoreApplication::setApplicationVersion(QStringLiteral(THERMVANE_VERSION));
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("ThermVane"));
@@ -56,7 +99,11 @@ int listSensors(int argc, char *argv[])
 
 int main(int argc, char *argv[])
 {
-    if (hasListSensorsOption(argc, argv)) {
+    if (hasOption(argc, argv, QStringLiteral("--set-fan-speed"))) {
+        return setFanSpeedCli(argc, argv);
+    }
+
+    if (hasOption(argc, argv, QStringLiteral("--list-sensors"))) {
         return listSensors(argc, argv);
     }
 
@@ -67,6 +114,7 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     QGuiApplication::setOrganizationName(QStringLiteral("OpenThermVane"));
     QGuiApplication::setApplicationName(QStringLiteral("ThermVane"));
+    QGuiApplication::setApplicationVersion(QStringLiteral(THERMVANE_VERSION));
     QQuickStyle::setStyle(QStringLiteral("Material"));
 
     QCommandLineParser parser;
@@ -85,6 +133,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("FanCurveModel"), application.fanCurveModel());
     engine.rootContext()->setContextProperty(QStringLiteral("FanController"), application.fanController());
     engine.rootContext()->setContextProperty(QStringLiteral("LanguageManager"), &languageManager);
+    engine.rootContext()->setContextProperty(QStringLiteral("AppVersion"), QGuiApplication::applicationVersion());
 
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app, [] {
         QCoreApplication::exit(-1);

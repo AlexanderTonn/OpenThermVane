@@ -19,14 +19,40 @@ void FanModel::setManager(FanManager *manager)
 
     beginResetModel();
     m_manager = manager;
+    m_lastCount = rowCount();
     endResetModel();
 
     if (m_manager) {
         connect(m_manager, &FanManager::fansChanged, this, [this] {
-            beginResetModel();
-            endResetModel();
+            const int nextCount = rowCount();
+            if (nextCount != m_lastCount) {
+                beginResetModel();
+                m_lastCount = nextCount;
+                endResetModel();
+                emit countChanged();
+                return;
+            }
+
+            if (nextCount > 0) {
+                emit dataChanged(index(0), index(nextCount - 1), {
+                    IdRole,
+                    NameRole,
+                    RpmRole,
+                    SpeedPercentRole,
+                    AutomaticRole,
+                    SupportsControlRole,
+                    SupportsRpmRole,
+                    SupportsFirmwareControlRole,
+                });
+            }
         });
     }
+    emit countChanged();
+}
+
+int FanModel::count() const
+{
+    return rowCount();
 }
 
 int FanModel::rowCount(const QModelIndex &parent) const
@@ -83,6 +109,21 @@ QHash<int, QByteArray> FanModel::roleNames() const
         {SupportsRpmRole, "supportsRpm"},
         {SupportsFirmwareControlRole, "supportsFirmwareControl"},
     };
+}
+
+QVariantMap FanModel::get(int row) const
+{
+    QVariantMap item;
+    const QModelIndex modelIndex = index(row);
+    if (!modelIndex.isValid()) {
+        return item;
+    }
+
+    const auto roles = roleNames();
+    for (auto it = roles.cbegin(); it != roles.cend(); ++it) {
+        item.insert(QString::fromUtf8(it.value()), data(modelIndex, it.key()));
+    }
+    return item;
 }
 
 

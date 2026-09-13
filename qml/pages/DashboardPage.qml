@@ -69,8 +69,6 @@ Item {
                     supportsRpm: model.supportsRpm
                     supportsFirmwareControl: model.supportsFirmwareControl
                     compact: true
-                    onManualSpeedRequested: if (fanModel.setManualSpeed) fanModel.setManualSpeed(fanId, speed)
-                    onAutomaticRequested: if (fanModel.restoreAutomaticControl) fanModel.restoreAutomaticControl(fanId)
                 }
             }
         }

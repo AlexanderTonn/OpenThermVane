@@ -7,7 +7,9 @@ RowLayout {
 
     property alias value: slider.value
     property bool enabledControl: true
-    signal moved(real value)
+    readonly property bool dragging: slider.pressed
+    signal previewed(real value)
+    signal committed(real value)
 
     spacing: 10
 
@@ -18,12 +20,10 @@ RowLayout {
         stepSize: 1
         enabled: root.enabledControl
         Layout.fillWidth: true
-        onMoved: root.moved(value)
-    }
-
-    Label {
-        text: Math.round(slider.value) + "%"
-        horizontalAlignment: Text.AlignRight
-        Layout.preferredWidth: 46
+        onMoved: function() { root.previewed(value) }
+        onPressedChanged: {
+            if (!pressed)
+                root.committed(value)
+        }
     }
 }
