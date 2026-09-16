@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Installer>
+    <Name>ThermVane</Name>
+    <Version>0.1.0</Version>
+    <Title>ThermVane Installer</Title>
+    <Publisher>OpenThermVane</Publisher>
+    <StartMenuDir>ThermVane</StartMenuDir>
+    <TargetDir>@ApplicationsDirX64@/ThermVane</TargetDir>
+    <WizardStyle>Modern</WizardStyle>
+    <MaintenanceToolName>ThermVaneMaintenanceTool</MaintenanceToolName>
+    <ControlScript>controlscript.qs</ControlScript>
+    <AllowNonAsciiCharacters>true</AllowNonAsciiCharacters>
+</Installer>

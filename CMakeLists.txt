@@ -24,6 +24,9 @@ if(COMMAND qt_policy)
     qt_policy(SET QTP0004 NEW)
 endif()
 
+option(THERMVANE_ENABLE_NBFC_LINUX_BUILD "Add a target that builds the NBFC submodule on Linux" ON)
+option(THERMVANE_ENABLE_NBFC_WINDOWS_BUILD "Add a target that builds the NBFC submodule on Windows" ON)
+
 set(THERMVANE_SOURCES
     src/main.cpp
     src/app/Application.cpp
@@ -42,8 +45,6 @@ set(THERMVANE_SOURCES
     src/hardware/IHardwareBackend.hpp
     src/hardware/mock/MockHardwareBackend.cpp
     src/hardware/mock/MockHardwareBackend.hpp
-    src/hardware/linux/LinuxHardwareBackend.cpp
-    src/hardware/linux/LinuxHardwareBackend.hpp
     src/hardware/macos/MacHardwareBackend.cpp
     src/hardware/macos/MacHardwareBackend.hpp
     src/hardware/windows/WindowsHardwareBackend.cpp
@@ -59,6 +60,13 @@ set(THERMVANE_SOURCES
     src/service/ServiceProtocol.cpp
     src/service/ServiceProtocol.hpp
 )
+
+if(LINUX)
+    list(APPEND THERMVANE_SOURCES
+        src/hardware/linux/LinuxHardwareBackend.cpp
+        src/hardware/linux/LinuxHardwareBackend.hpp
+    )
+endif()
 
 set(THERMVANE_QML_FILES
     qml/Main.qml
@@ -82,6 +90,16 @@ set(THERMVANE_PROJECT_FILES
     qtquickcontrols2.conf
     README.md
     docs/architecture.md
+    docs/packaging.md
+    installer/config/config.xml
+    installer/packages/org.openthermvane.app/meta/package.xml
+    installer/packages/org.openthermvane.app/meta/installscript.qs
+    installer/packages/org.openthermvane.nbfc/meta/package.xml
+    installer/packages/org.openthermvane.nbfc/meta/installscript.qs
+    scripts/build-ifw-installer.ps1
+    scripts/build-nbfc-linux.sh
+    cmake/BuildIfwInstaller.cmake
+    cmake/PackageIfw.cmake
 )
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
@@ -150,3 +168,21 @@ if(APPLE)
         RUNTIME DESTINATION bin
     )
 endif()
+
+if(THERMVANE_ENABLE_NBFC_LINUX_BUILD AND LINUX)
+    add_custom_target(nbfc_linux_build
+        COMMAND "${CMAKE_COMMAND}" -E env bash "${CMAKE_SOURCE_DIR}/scripts/build-nbfc-linux.sh"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        USES_TERMINAL
+        COMMENT "Build NBFC from the external/nbfc submodule for Linux")
+endif()
+
+if(THERMVANE_ENABLE_NBFC_WINDOWS_BUILD AND WIN32)
+    add_custom_target(nbfc_windows_build
+        COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_SOURCE_DIR}/external/nbfc/build.ps1"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/external/nbfc"
+        USES_TERMINAL
+        COMMENT "Build NBFC from the external/nbfc submodule for Windows")
+endif()
+
+include(cmake/BuildIfwInstaller.cmake)

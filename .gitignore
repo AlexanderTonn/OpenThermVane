@@ -29,6 +29,8 @@ ui_*.h
 *.jsc
 Makefile*
 *build-*
+!scripts/build-ifw-installer.ps1
+!scripts/build-nbfc-linux.sh
 build/
 *.qm
 *.prl

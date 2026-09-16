@@ -1,0 +1,15 @@
+function Component()
+{
+}
+
+Component.prototype.createOperations = function()
+{
+    component.createOperations();
+
+    if (systemInfo.productType === "windows") {
+        component.addOperation("CreateShortcut",
+            "@TargetDir@/bin/ThermVane.exe",
+            "@StartMenuDir@/ThermVane.lnk",
+            "workingDirectory=@TargetDir@/bin");
+    }
+}

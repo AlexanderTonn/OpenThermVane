@@ -1,0 +1,3 @@
+[submodule "external/nbfc"]
+	path = external/nbfc
+	url = https://github.com/hirschmann/nbfc.git

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Package>
+    <DisplayName>NoteBook FanControl</DisplayName>
+    <Description>Installs NBFC for notebook fan control integration on Windows.</Description>
+    <Version>1.6.3</Version>
+    <ReleaseDate>2026-09-16</ReleaseDate>
+    <Default>true</Default>
+    <Script>installscript.qs</Script>
+</Package>

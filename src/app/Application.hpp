@@ -9,6 +9,9 @@
 #if defined(Q_OS_LINUX)
 #include "hardware/linux/LinuxHardwareBackend.hpp"
 #endif
+#if defined(Q_OS_WIN) || defined(_WIN32)
+#include "hardware/windows/WindowsHardwareBackend.hpp"
+#endif
 #include "hardware/mock/MockHardwareBackend.hpp"
 #include "hardware/macos/MacHardwareBackend.hpp"
 #include "hardware/HardwareTypes.hpp"
@@ -37,6 +40,9 @@ private:
     MockHardwareBackend m_backend;
 #if defined(Q_OS_LINUX)
     LinuxHardwareBackend m_linuxBackend;
+#endif
+#if defined(Q_OS_WIN) || defined(_WIN32)
+    WindowsHardwareBackend m_windowsBackend;
 #endif
     MacHardwareBackend m_macBackend;
     FanManager m_fanManager;

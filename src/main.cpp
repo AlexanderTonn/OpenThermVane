@@ -1,6 +1,7 @@
 #include "app/Application.hpp"
 #include "app/LanguageManager.hpp"
 #include "hardware/macos/MacHardwareBackend.hpp"
+#include "hardware/windows/WindowsHardwareBackend.hpp"
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
@@ -12,10 +13,24 @@
 #include <QTextStream>
 #include <QtGlobal>
 
+#if defined(Q_OS_WIN) || defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
 namespace {
 
 bool hasOption(int argc, char *argv[], const QString &option)
 {
+#if defined(Q_OS_WIN) || defined(_WIN32)
+    const QString commandLine = QString::fromWCharArray(GetCommandLineW());
+    if (commandLine.contains(option)) {
+        return true;
+    }
+#endif
+
     for (int index = 1; index < argc; ++index) {
         if (QString::fromLocal8Bit(argv[index]) == option) {
             return true;
@@ -54,6 +69,11 @@ int setFanSpeedCli(int argc, char *argv[])
 
 #if defined(Q_OS_MACOS)
     thermvane::MacHardwareBackend backend;
+    if (backend.setFanSpeed(fanId, percent)) {
+        return 0;
+    }
+#elif defined(Q_OS_WIN) || defined(_WIN32)
+    thermvane::WindowsHardwareBackend backend;
     if (backend.setFanSpeed(fanId, percent)) {
         return 0;
     }
