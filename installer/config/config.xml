@@ -5,7 +5,7 @@
     <Title>ThermVane Installer</Title>
     <Publisher>OpenThermVane</Publisher>
     <StartMenuDir>ThermVane</StartMenuDir>
-    <TargetDir>@ApplicationsDirX64@/ThermVane</TargetDir>
+    <TargetDir>@ApplicationsDirX64@/OpenThermVane</TargetDir>
     <WizardStyle>Modern</WizardStyle>
     <MaintenanceToolName>ThermVaneMaintenanceTool</MaintenanceToolName>
     <ControlScript>controlscript.qs</ControlScript>

@@ -1,8 +1,17 @@
 #include "app/Application.hpp"
 
 #include <QSysInfo>
+#include <algorithm>
+#include <cmath>
+#include <limits>
 
 namespace thermvane {
+
+namespace {
+
+constexpr double kEmergencyClearHysteresisC = 3.0;
+
+}
 
 Application::Application(QObject *parent)
     : QObject(parent)
@@ -23,6 +32,15 @@ Application::Application(QObject *parent)
     m_sensorManager.setBackend(backend);
     m_fanModel.setManager(&m_fanManager);
     m_sensorModel.setManager(&m_sensorManager);
+
+    connect(&m_sensorManager, &SensorManager::sensorsChanged,
+            this, &Application::evaluateEmergencyPolicy);
+    connect(&m_fanManager, &FanManager::fansChanged,
+            this, &Application::evaluateEmergencyPolicy);
+    connect(&m_fanController, &FanController::policyChanged,
+            this, &Application::evaluateEmergencyPolicy);
+
+    evaluateEmergencyPolicy();
 }
 
 FanModel *Application::fanModel()
@@ -48,6 +66,41 @@ FanController *Application::fanController()
 QList<SensorInfo> Application::sensors() const
 {
     return m_sensorManager.sensors();
+}
+
+void Application::evaluateEmergencyPolicy()
+{
+    if (m_evaluatingEmergencyPolicy) {
+        return;
+    }
+
+    m_evaluatingEmergencyPolicy = true;
+
+    double highestTemperature = -std::numeric_limits<double>::infinity();
+    for (const SensorInfo &sensor : m_sensorManager.sensors()) {
+        if (!sensor.available || !std::isfinite(sensor.temperatureCelsius)) {
+            continue;
+        }
+        highestTemperature = std::max(highestTemperature, sensor.temperatureCelsius);
+    }
+
+    bool nextEmergencyActive = m_emergencyActive;
+    if (std::isfinite(highestTemperature)) {
+        if (highestTemperature >= m_fanController.emergencyTemperature()) {
+            nextEmergencyActive = true;
+        } else if (highestTemperature <= m_fanController.emergencyTemperature() - kEmergencyClearHysteresisC) {
+            nextEmergencyActive = false;
+        }
+    } else {
+        nextEmergencyActive = false;
+    }
+
+    if (nextEmergencyActive != m_emergencyActive || nextEmergencyActive) {
+        m_fanManager.setEmergencyFullSpeed(nextEmergencyActive);
+        m_emergencyActive = nextEmergencyActive;
+    }
+
+    m_evaluatingEmergencyPolicy = false;
 }
 
 } // namespace thermvane

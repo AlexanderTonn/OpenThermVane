@@ -37,6 +37,8 @@ public:
     QList<SensorInfo> sensors() const;
 
 private:
+    void evaluateEmergencyPolicy();
+
     MockHardwareBackend m_backend;
 #if defined(Q_OS_LINUX)
     LinuxHardwareBackend m_linuxBackend;
@@ -51,6 +53,8 @@ private:
     FanModel m_fanModel;
     SensorModel m_sensorModel;
     FanCurveModel m_fanCurveModel;
+    bool m_emergencyActive = false;
+    bool m_evaluatingEmergencyPolicy = false;
 };
 
 } // namespace thermvane

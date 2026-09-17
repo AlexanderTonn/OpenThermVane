@@ -18,6 +18,7 @@ Item {
     property var displayedFanSpeeds: ({})
     property var lastAppliedCurveSpeeds: ({})
     property var applyingCurveSpeeds: ({})
+    property var defaultSystemAutoAppliedFans: ({})
 
     function itemAt(model, row) {
         if (!model || row < 0)
@@ -141,6 +142,35 @@ Item {
             fanCurveModel.setCurveAutoForFan(fanId, enabled)
     }
 
+    function requestSystemAuto(fanId) {
+        if (!fanId || !fanModel || !fanModel.restoreAutomaticControl)
+            return false
+
+        setCurveAuto(fanId, false)
+        const failed = Object.assign({}, lastAppliedCurveSpeeds)
+        delete failed[fanId]
+        lastAppliedCurveSpeeds = failed
+        return fanModel.restoreAutomaticControl(fanId)
+    }
+
+    function ensureDefaultSystemAutoForFans() {
+        if (!fanModel || !fanModel.restoreAutomaticControl)
+            return
+
+        const nextApplied = Object.assign({}, defaultSystemAutoAppliedFans)
+        for (let i = 0; i < modelCount(fanModel); ++i) {
+            const fan = itemAt(fanModel, i)
+            if (!fan.fanId || nextApplied[fan.fanId] === true)
+                continue
+
+            nextApplied[fan.fanId] = true
+            defaultSystemAutoAppliedFans = Object.assign({}, nextApplied)
+            if (fan.supportsFirmwareControl === true || fan.supportsControl === true)
+                requestSystemAuto(fan.fanId)
+        }
+        defaultSystemAutoAppliedFans = nextApplied
+    }
+
     function applyCurve(fanId) {
         if (!fanModel || !fanModel.setManualSpeed || !fanCurveModel)
             return
@@ -255,6 +285,7 @@ Item {
                     speedPercent: model.speedPercent
                     automatic: model.automatic
                     curveMode: root.isCurveAuto(model.fanId)
+                    systemAutoMode: model.automatic && !root.isCurveAuto(model.fanId)
                     supportsControl: model.supportsControl
                     supportsRpm: model.supportsRpm
                     supportsFirmwareControl: model.supportsFirmwareControl
@@ -277,6 +308,10 @@ Item {
                     onAutomaticRequested: {
                         root.setCurveAuto(fanCard.fanId, true)
                         root.applyCurve(fanCard.fanId)
+                    }
+                    onSystemAutomaticRequested: {
+                        if (!root.requestSystemAuto(fanCard.fanId))
+                            fanCard.displayedSpeedPercent = fanCard.speedPercent
                     }
                 }
             }
@@ -372,9 +407,18 @@ Item {
 
     Connections {
         target: fanModel || null
-        function onCountChanged() { root.initializeSelection() }
-        function onModelReset() { root.initializeSelection() }
-        function onRowsInserted() { root.initializeSelection() }
+        function onCountChanged() {
+            root.initializeSelection()
+            root.ensureDefaultSystemAutoForFans()
+        }
+        function onModelReset() {
+            root.initializeSelection()
+            root.ensureDefaultSystemAutoForFans()
+        }
+        function onRowsInserted() {
+            root.initializeSelection()
+            root.ensureDefaultSystemAutoForFans()
+        }
         function onRowsRemoved() { root.initializeSelection() }
         function onDataChanged() { root.updateSelectedSensorTemperature() }
     }
@@ -422,5 +466,6 @@ Item {
         syncCurveAutoFromModel()
         initializeSelection()
         updateSelectedSensorTemperature()
+        ensureDefaultSystemAutoForFans()
     }
 }

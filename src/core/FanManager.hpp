@@ -6,6 +6,7 @@
 #include <QHash>
 #include <QList>
 #include <QPointer>
+#include <QSet>
 
 namespace thermvane {
 
@@ -23,6 +24,7 @@ public:
 
     Q_INVOKABLE bool setManualSpeed(const QString &fanId, double percent);
     Q_INVOKABLE bool restoreAutomaticControl(const QString &fanId);
+    bool setEmergencyFullSpeed(bool active);
 
 signals:
     void fansChanged();
@@ -30,10 +32,14 @@ signals:
 private:
     void refresh();
     void applyManualOverrides();
+    bool applyEmergencySpeed();
+    bool restoreEmergencyControlledFans();
 
     QPointer<IHardwareBackend> m_backend;
     QList<FanInfo> m_fans;
     QHash<QString, double> m_manualSpeedOverrides;
+    QSet<QString> m_emergencyControlledFans;
+    bool m_emergencyActive = false;
 };
 
 } // namespace thermvane

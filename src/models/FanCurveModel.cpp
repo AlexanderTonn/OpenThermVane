@@ -260,12 +260,7 @@ void FanCurveModel::loadSettings()
     }
     settings.endGroup();
 
-    const QStringList autoFanIds = settings.value(QStringLiteral("curveAutoFanIds")).toStringList();
-    for (const QString &fanId : autoFanIds) {
-        if (!fanId.isEmpty()) {
-            m_curveAutoFanIds.insert(normalizedFanId(fanId));
-        }
-    }
+    settings.remove(QStringLiteral("curveAutoFanIds"));
 
     settings.endGroup();
 }

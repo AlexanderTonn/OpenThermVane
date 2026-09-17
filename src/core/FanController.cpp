@@ -1,5 +1,6 @@
 #include "core/FanController.hpp"
 
+#include <QSettings>
 #include <algorithm>
 
 namespace thermvane {
@@ -7,6 +8,13 @@ namespace thermvane {
 FanController::FanController(QObject *parent)
     : QObject(parent)
 {
+    QSettings settings;
+    m_emergencyTemperature = std::clamp(settings.value(QStringLiteral("safety/emergencyTemperatureC"), m_emergencyTemperature).toDouble(),
+                                        70.0,
+                                        110.0);
+    m_minimumSpeed = std::clamp(settings.value(QStringLiteral("safety/minimumSpeedPercent"), m_minimumSpeed).toDouble(),
+                                0.0,
+                                100.0);
 }
 
 double FanController::emergencyTemperature() const
@@ -16,10 +24,13 @@ double FanController::emergencyTemperature() const
 
 void FanController::setEmergencyTemperature(double temperature)
 {
-    if (qFuzzyCompare(m_emergencyTemperature, temperature)) {
+    const double normalized = std::clamp(temperature, 70.0, 110.0);
+    if (qFuzzyCompare(m_emergencyTemperature, normalized)) {
         return;
     }
-    m_emergencyTemperature = temperature;
+    m_emergencyTemperature = normalized;
+    QSettings settings;
+    settings.setValue(QStringLiteral("safety/emergencyTemperatureC"), m_emergencyTemperature);
     emit policyChanged();
 }
 
@@ -35,6 +46,8 @@ void FanController::setMinimumSpeed(double speed)
         return;
     }
     m_minimumSpeed = normalized;
+    QSettings settings;
+    settings.setValue(QStringLiteral("safety/minimumSpeedPercent"), m_minimumSpeed);
     emit policyChanged();
 }
 

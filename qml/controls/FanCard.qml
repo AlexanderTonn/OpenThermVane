@@ -12,6 +12,7 @@ Rectangle {
     property real displayedSpeedPercent: speedPercent
     property bool automatic: true
     property bool curveMode: false
+    property bool systemAutoMode: automatic && !curveMode
     property bool supportsControl: false
     property bool supportsRpm: false
     property bool supportsFirmwareControl: false
@@ -20,6 +21,7 @@ Rectangle {
     signal manualSpeedRequested(real speed)
     signal manualModeRequested(real speed)
     signal automaticRequested()
+    signal systemAutomaticRequested()
 
     onSpeedPercentChanged: {
         if (!sliderControl.dragging)
@@ -67,7 +69,7 @@ Rectangle {
             Layout.fillWidth: true
 
             Label {
-                text: root.curveMode ? qsTr("Auto") : qsTr("Manual")
+                text: root.systemAutoMode ? qsTr("System Auto") : (root.curveMode ? qsTr("Auto") : qsTr("Manual"))
                 opacity: 0.8
             }
 
@@ -89,7 +91,7 @@ Rectangle {
             id: sliderControl
             visible: !root.compact
             value: root.displayedSpeedPercent
-            enabledControl: root.supportsControl && !root.curveMode
+            enabledControl: root.supportsControl && !root.curveMode && !root.systemAutoMode
             Layout.fillWidth: true
             onPreviewed: function(speed) {
                 root.displayedSpeedPercent = speed
@@ -109,8 +111,8 @@ Rectangle {
                 text: qsTr("Manual")
                 bottomPadding: 5
                 topPadding: 5
-                enabled: root.supportsControl && root.curveMode
-                opacity: root.curveMode ? 0.8 : 1.0
+                enabled: root.supportsControl && (root.curveMode || root.systemAutoMode)
+                opacity: (!root.curveMode && !root.systemAutoMode) ? 1.0 : 0.8
                 Layout.fillWidth: true
                 onClicked: root.manualModeRequested(root.displayedSpeedPercent)
             }
@@ -123,6 +125,16 @@ Rectangle {
                 opacity: root.curveMode ? 1.0 : 0.8
                 Layout.fillWidth: true
                 onClicked: root.automaticRequested()
+            }
+
+            Button {
+                text: qsTr("System Auto")
+                bottomPadding: 5
+                topPadding: 5
+                enabled: root.supportsFirmwareControl && !root.systemAutoMode
+                opacity: root.systemAutoMode ? 1.0 : 0.8
+                Layout.fillWidth: true
+                onClicked: root.systemAutomaticRequested()
             }
         }
     }

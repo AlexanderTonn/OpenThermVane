@@ -114,6 +114,10 @@ qt_add_executable(ThermVane
     ${THERMVANE_PROJECT_FILES}
 )
 
+if(WIN32)
+    set_target_properties(ThermVane PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
+
 qt_add_qml_module(ThermVane
     URI OpenThermVane
     VERSION 1.0

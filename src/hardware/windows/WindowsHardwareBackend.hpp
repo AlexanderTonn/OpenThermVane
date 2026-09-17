@@ -31,17 +31,20 @@ public:
 
 private:
     void startNbfcService();
+    void ensureNbfcConfigured();
     void applyHardwareSnapshot(const QJsonObject &hardware);
 
     QList<SensorInfo> m_sensors;
     QList<FanInfo> m_fans;
     QHash<QString, WmiControlTarget> m_controlsByFanId;
     QHash<QString, int> m_nbfcFanIndexesByFanId;
+    int m_nbfcFanCount = 0;
     QHash<QString, double> m_pendingManualFanSpeeds;
     QString m_nbfcPath;
     QElapsedTimer m_lastScanTimer;
     bool m_scanRunning = false;
     bool m_nbfcStartAttempted = false;
+    bool m_nbfcConfigAttempted = false;
 };
 
 } // namespace thermvane

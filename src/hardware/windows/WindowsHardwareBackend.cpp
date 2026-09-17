@@ -38,47 +38,6 @@ namespace {
 constexpr int kPowershellTimeoutMs = 3500;
 constexpr qint64 kMinimumScanIntervalMs = 2500;
 
-#if defined(_WIN32)
-#pragma pack(push, 1)
-struct HwinfoSharedHeader
-{
-    uint32_t signature = 0;
-    uint32_t version = 0;
-    uint32_t revision = 0;
-    int64_t pollTime = 0;
-    uint32_t sensorOffset = 0;
-    uint32_t sensorSize = 0;
-    uint32_t sensorCount = 0;
-    uint32_t readingOffset = 0;
-    uint32_t readingSize = 0;
-    uint32_t readingCount = 0;
-    uint32_t pollingPeriod = 0;
-};
-
-struct HwinfoSensorElement
-{
-    uint32_t id = 0;
-    uint32_t instance = 0;
-    char originalName[128] = {};
-    char userName[128] = {};
-};
-
-struct HwinfoReadingElement
-{
-    uint32_t type = 0;
-    uint32_t sensorIndex = 0;
-    uint32_t id = 0;
-    char originalLabel[128] = {};
-    char userLabel[128] = {};
-    char unit[16] = {};
-    double value = 0.0;
-    double minValue = 0.0;
-    double maxValue = 0.0;
-    double averageValue = 0.0;
-};
-#pragma pack(pop)
-#endif
-
 QString powershellExe()
 {
     return QStringLiteral("powershell.exe");
@@ -88,6 +47,19 @@ QString powershellString(QString value)
 {
     value.replace(QLatin1Char('\''), QStringLiteral("''"));
     return QStringLiteral("'%1'").arg(value);
+}
+
+void hideProcessConsoleWindow(QProcess &process)
+{
+#if defined(_WIN32)
+    process.setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments *arguments) {
+        arguments->flags |= CREATE_NO_WINDOW;
+        arguments->startupInfo->dwFlags |= STARTF_USESHOWWINDOW;
+        arguments->startupInfo->wShowWindow = SW_HIDE;
+    });
+#else
+    Q_UNUSED(process)
+#endif
 }
 
 bool runPowershell(const QString &script, QString *output = nullptr)
@@ -101,6 +73,7 @@ bool runPowershell(const QString &script, QString *output = nullptr)
         QStringLiteral("-Command"),
         script,
     });
+    hideProcessConsoleWindow(process);
     process.start();
     if (!process.waitForFinished(kPowershellTimeoutMs)) {
         process.kill();
@@ -113,7 +86,11 @@ bool runPowershell(const QString &script, QString *output = nullptr)
     }
 
     if (output) {
-        *output = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+        const QString standardOutput = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+        const QString standardError = QString::fromUtf8(process.readAllStandardError()).trimmed();
+        *output = standardError.isEmpty()
+            ? standardOutput
+            : QStringLiteral("%1\n%2").arg(standardOutput, standardError).trimmed();
     }
     return true;
 }
@@ -123,6 +100,7 @@ bool runProcess(const QString &program, const QStringList &arguments, int timeou
     QProcess process;
     process.setProgram(program);
     process.setArguments(arguments);
+    hideProcessConsoleWindow(process);
     process.start();
     if (!process.waitForFinished(timeoutMs)) {
         process.kill();
@@ -181,6 +159,172 @@ bool nbfcResponds(const QString &nbfcPath)
         return false;
     }
     return runProcess(nbfcPath, {QStringLiteral("status")}, 2500);
+}
+
+bool nbfcOutputContainsFailure(const QString &output)
+{
+    const QString normalized = output.toLower();
+    return normalized.contains(QStringLiteral("could not"))
+        || normalized.contains(QStringLiteral("failed"))
+        || normalized.contains(QStringLiteral("invalid"))
+        || normalized.contains(QStringLiteral("unavailable"))
+        || normalized.contains(QStringLiteral("timed out"))
+        || normalized.contains(QStringLiteral("no config"));
+}
+
+bool runNbfcCommand(const QString &nbfcPath, const QStringList &arguments, int timeoutMs = 5000, QString *output = nullptr)
+{
+    QString commandOutput;
+    if (!runProcess(nbfcPath, arguments, timeoutMs, &commandOutput)) {
+        return false;
+    }
+
+    if (output) {
+        *output = commandOutput;
+    }
+    return !nbfcOutputContainsFailure(commandOutput);
+}
+
+QString valueAfterColon(const QString &line)
+{
+    return line.section(QLatin1Char(':'), 1).trimmed();
+}
+
+QString selectedNbfcConfigName(const QString &statusOutput)
+{
+    const QStringList lines = statusOutput.split(QLatin1Char('\n'));
+    for (const QString &rawLine : lines) {
+        const QString line = rawLine.trimmed();
+        if (line.startsWith(QStringLiteral("Selected config name"), Qt::CaseInsensitive)) {
+            return valueAfterColon(line);
+        }
+    }
+    return {};
+}
+
+QString firstNonEmptyLine(const QString &output)
+{
+    const QStringList lines = output.split(QLatin1Char('\n'));
+    for (const QString &rawLine : lines) {
+        const QString line = rawLine.trimmed();
+        if (!line.isEmpty()) {
+            return line;
+        }
+    }
+    return {};
+}
+
+struct NbfcFanStatus
+{
+    int index = -1;
+    QString name;
+    double currentPercent = 0.0;
+    double targetPercent = 0.0;
+    bool automatic = true;
+};
+
+bool plausibleTemperature(double temperature);
+
+bool lineBoolValue(const QString &line, bool fallback)
+{
+    const QString value = line.section(QLatin1Char(':'), 1).trimmed();
+    if (value.compare(QStringLiteral("true"), Qt::CaseInsensitive) == 0) {
+        return true;
+    }
+    if (value.compare(QStringLiteral("false"), Qt::CaseInsensitive) == 0) {
+        return false;
+    }
+    return fallback;
+}
+
+double lineNumberValue(const QString &line, double fallback = 0.0)
+{
+    bool ok = false;
+    const double value = line.section(QLatin1Char(':'), 1).trimmed().toDouble(&ok);
+    return ok ? value : fallback;
+}
+
+QList<NbfcFanStatus> readNbfcFanStatuses(const QString &nbfcPath)
+{
+    QString output;
+    if (nbfcPath.isEmpty() || !runProcess(nbfcPath, {QStringLiteral("status"), QStringLiteral("-a")}, 3000, &output)) {
+        return {};
+    }
+
+    QList<NbfcFanStatus> fans;
+    NbfcFanStatus current;
+    bool hasCurrent = false;
+    const QStringList lines = output.split(QLatin1Char('\n'));
+    for (const QString &rawLine : lines) {
+        const QString line = rawLine.trimmed();
+        if (line.isEmpty()) {
+            continue;
+        }
+
+        if (line.startsWith(QStringLiteral("Fan display name"), Qt::CaseInsensitive)) {
+            if (hasCurrent) {
+                fans.append(current);
+            }
+            current = {};
+            current.index = fans.size();
+            current.name = line.section(QLatin1Char(':'), 1).trimmed();
+            if (current.name.isEmpty()) {
+                current.name = QStringLiteral("NBFC Fan %1").arg(current.index + 1);
+            }
+            hasCurrent = true;
+            continue;
+        }
+
+        if (!hasCurrent) {
+            continue;
+        }
+
+        if (line.startsWith(QStringLiteral("Auto control enabled"), Qt::CaseInsensitive)) {
+            current.automatic = lineBoolValue(line, current.automatic);
+        } else if (line.startsWith(QStringLiteral("Current fan speed"), Qt::CaseInsensitive)) {
+            current.currentPercent = std::clamp(lineNumberValue(line, current.currentPercent), 0.0, 100.0);
+        } else if (line.startsWith(QStringLiteral("Target fan speed"), Qt::CaseInsensitive)) {
+            current.targetPercent = std::clamp(lineNumberValue(line, current.targetPercent), 0.0, 100.0);
+        }
+    }
+
+    if (hasCurrent) {
+        fans.append(current);
+    }
+    return fans;
+}
+
+bool appendNbfcTemperatureSensor(const QString &nbfcPath, QList<SensorInfo> &sensors)
+{
+    QString output;
+    if (nbfcPath.isEmpty() || !runProcess(nbfcPath, {QStringLiteral("status"), QStringLiteral("-s")}, 3000, &output)) {
+        return false;
+    }
+
+    const QStringList lines = output.split(QLatin1Char('\n'));
+    for (const QString &rawLine : lines) {
+        const QString line = rawLine.trimmed();
+        if (!line.startsWith(QStringLiteral("Temperature"), Qt::CaseInsensitive)) {
+            continue;
+        }
+
+        bool ok = false;
+        const double temperature = valueAfterColon(line).toDouble(&ok);
+        if (!ok || !plausibleTemperature(temperature)) {
+            return false;
+        }
+
+        SensorInfo sensor;
+        sensor.id = QStringLiteral("windows-nbfc-cpu-temperature");
+        sensor.name = QStringLiteral("CPU Temperature");
+        sensor.temperatureCelsius = temperature;
+        sensor.source = QStringLiteral("NBFC");
+        sensor.available = true;
+        sensors.append(std::move(sensor));
+        return true;
+    }
+
+    return false;
 }
 
 QString collectWindowsHardwareScript()
@@ -263,6 +407,17 @@ QString slugify(const QString &rawValue)
 bool plausibleTemperature(double temperature)
 {
     return std::isfinite(temperature) && temperature > 0.0 && temperature < 150.0;
+}
+
+bool hasTrustedPlatformTemperatureSensor(const QList<SensorInfo> &sensors)
+{
+    return std::any_of(sensors.cbegin(), sensors.cend(), [](const SensorInfo &sensor) {
+        const QString source = sensor.source.toLower();
+        return source.contains(QStringLiteral("nbfc"))
+            || source.contains(QStringLiteral("librehardwaremonitor"))
+            || source.contains(QStringLiteral("openhardwaremonitor"))
+            || source.contains(QStringLiteral("instrumentedbios"));
+    });
 }
 
 bool plausibleRpm(double rpm)
@@ -551,15 +706,22 @@ void appendWindowsTemperatureProbes(const QJsonArray &probes, QList<SensorInfo> 
 {
     for (int index = 0; index < probes.size(); ++index) {
         const QJsonObject probe = probes.at(index).toObject();
-        const double raw = jsonNumber(probe, QStringLiteral("CurrentTemperature"), 0.0);
-        const double celsius = raw > 200.0 ? (raw / 10.0) - 273.15 : raw;
-        if (!plausibleTemperature(celsius)) {
+        const QString rawName = jsonString(probe, QStringLiteral("Name"));
+        const QString deviceId = jsonString(probe, QStringLiteral("DeviceID"));
+        const QString normalizedIdentity = QStringLiteral("%1 %2").arg(rawName, deviceId).toLower();
+        if (normalizedIdentity.contains(QStringLiteral("battery"))) {
             continue;
         }
 
-        const QString name = jsonString(probe, QStringLiteral("Name")).isEmpty()
+        const double raw = jsonNumber(probe, QStringLiteral("CurrentTemperature"), 0.0);
+        const double celsius = raw > 200.0 ? (raw / 10.0) - 273.15 : raw;
+        if (!plausibleTemperature(celsius) || celsius < 35.0) {
+            continue;
+        }
+
+        const QString name = rawName.isEmpty()
             ? QStringLiteral("Windows Temperature Probe %1").arg(index + 1)
-            : jsonString(probe, QStringLiteral("Name"));
+            : rawName;
         SensorInfo sensor;
         sensor.id = QStringLiteral("windows-probe-%1").arg(slugify(name));
         sensor.name = name;
@@ -656,6 +818,7 @@ void appendNvidiaSmi(QList<SensorInfo> &sensors, QList<FanInfo> &fans)
         QStringLiteral("--query-gpu=name,uuid,pci.bus_id,temperature.gpu,fan.speed"),
         QStringLiteral("--format=csv,noheader,nounits"),
     });
+    hideProcessConsoleWindow(process);
     process.start();
     if (!process.waitForFinished(1200)
         || process.exitStatus() != QProcess::NormalExit
@@ -793,128 +956,75 @@ void appendNvapiFans(QList<FanInfo> &fans)
 #endif
 }
 
-QString fixedAsciiString(const char *data, qsizetype maxLength)
+int bestNbfcIndexForFanName(const QString &fanName, const QList<NbfcFanStatus> &nbfcFans)
 {
-    const qsizetype length = qstrnlen(data, maxLength);
-    return QString::fromLocal8Bit(data, length).trimmed();
-}
-
-void appendHwinfoSharedMemory(QList<SensorInfo> &sensors, QList<FanInfo> &fans)
-{
-#if defined(_WIN32)
-    HANDLE mapping = OpenFileMappingW(FILE_MAP_READ, FALSE, L"Global\\HWiNFO_SENS_SM2");
-    if (!mapping) {
-        return;
+    if (nbfcFans.isEmpty()) {
+        return -1;
+    }
+    if (nbfcFans.size() == 1) {
+        return nbfcFans.first().index;
     }
 
-    void *view = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
-    if (!view) {
-        CloseHandle(mapping);
-        return;
-    }
-
-    MEMORY_BASIC_INFORMATION memoryInfo = {};
-    const SIZE_T querySize = VirtualQuery(view, &memoryInfo, sizeof(memoryInfo));
-    const size_t mappedSize = querySize == sizeof(memoryInfo) ? memoryInfo.RegionSize : 0;
-    const auto *base = static_cast<const unsigned char *>(view);
-    const auto *header = reinterpret_cast<const HwinfoSharedHeader *>(base);
-    constexpr uint32_t hwinfoSignature = 0x53695748; // "HWiS"
-
-    const auto rangeValid = [&](uint32_t offset, uint32_t elementSize, uint32_t count) {
-        if (mappedSize == 0 || elementSize == 0 || count > 4096) {
-            return false;
-        }
-        const size_t start = offset;
-        const size_t bytes = static_cast<size_t>(elementSize) * static_cast<size_t>(count);
-        return start <= mappedSize && bytes <= mappedSize - start;
-    };
-
-    if (header->signature == hwinfoSignature
-        && rangeValid(header->sensorOffset, header->sensorSize, header->sensorCount)
-        && rangeValid(header->readingOffset, header->readingSize, header->readingCount)) {
-        for (uint32_t index = 0; index < header->readingCount; ++index) {
-            const auto *reading = reinterpret_cast<const HwinfoReadingElement *>(
-                base + header->readingOffset + static_cast<size_t>(header->readingSize) * index);
-            if (reading->sensorIndex >= header->sensorCount || !std::isfinite(reading->value)) {
-                continue;
-            }
-
-            const auto *sensor = reinterpret_cast<const HwinfoSensorElement *>(
-                base + header->sensorOffset + static_cast<size_t>(header->sensorSize) * reading->sensorIndex);
-            const QString sensorName = fixedAsciiString(sensor->userName, sizeof(sensor->userName)).isEmpty()
-                ? fixedAsciiString(sensor->originalName, sizeof(sensor->originalName))
-                : fixedAsciiString(sensor->userName, sizeof(sensor->userName));
-            const QString label = fixedAsciiString(reading->userLabel, sizeof(reading->userLabel)).isEmpty()
-                ? fixedAsciiString(reading->originalLabel, sizeof(reading->originalLabel))
-                : fixedAsciiString(reading->userLabel, sizeof(reading->userLabel));
-            const QString unit = fixedAsciiString(reading->unit, sizeof(reading->unit));
-            const QString displayName = sensorName.isEmpty()
-                ? label
-                : (label.isEmpty() ? sensorName : QStringLiteral("%1 %2").arg(sensorName, label));
-            const QString idBase = QStringLiteral("%1-%2-%3")
-                                       .arg(sensor->id)
-                                       .arg(sensor->instance)
-                                       .arg(reading->id);
-
-            if (reading->type == 1 && plausibleTemperature(reading->value)) {
-                SensorInfo info;
-                info.id = QStringLiteral("windows-hwinfo-%1-temp").arg(slugify(idBase));
-                info.name = displayName.isEmpty() ? QStringLiteral("HWiNFO Temperature") : displayName;
-                info.temperatureCelsius = reading->value;
-                info.source = QStringLiteral("HWiNFO Shared Memory%1").arg(unit.isEmpty() ? QString() : QStringLiteral(" %1").arg(unit));
-                info.available = true;
-                sensors.append(std::move(info));
-            } else if (reading->type == 3 && plausibleRpm(reading->value)) {
-                FanInfo fan;
-                fan.id = QStringLiteral("windows-hwinfo-%1-fan").arg(slugify(idBase));
-                fan.name = displayName.isEmpty() ? QStringLiteral("HWiNFO Fan") : displayName;
-                fan.rpm = static_cast<int>(std::lround(reading->value));
-                fan.speedPercent = 0.0;
-                fan.automatic = true;
-                fan.capabilities.rpmReading = true;
-                fan.capabilities.manualControl = false;
-                fan.capabilities.firmwareControl = true;
-                fan.capabilities.zeroRpm = true;
-                fan.capabilities.pwmControl = false;
-                if (!hasFanId(fans, fan.id)) {
-                    fans.append(std::move(fan));
-                }
-            }
+    const QString normalizedFanName = fanName.toLower();
+    for (const NbfcFanStatus &nbfcFan : nbfcFans) {
+        const QString normalizedNbfcName = nbfcFan.name.toLower();
+        if ((normalizedFanName.contains(QStringLiteral("cpu")) && normalizedNbfcName.contains(QStringLiteral("cpu")))
+            || (normalizedFanName.contains(QStringLiteral("gpu")) && normalizedNbfcName.contains(QStringLiteral("gpu")))
+            || normalizedFanName.contains(normalizedNbfcName)
+            || normalizedNbfcName.contains(normalizedFanName)) {
+            return nbfcFan.index;
         }
     }
 
-    UnmapViewOfFile(view);
-    CloseHandle(mapping);
-#else
-    Q_UNUSED(sensors)
-    Q_UNUSED(fans)
-#endif
+    return -1;
 }
 
-QHash<QString, int> nbfcFanIndexesForFans(QList<FanInfo> &fans, bool nbfcAvailable)
+QHash<QString, int> nbfcFanIndexesForFans(QList<FanInfo> &fans, const QList<NbfcFanStatus> &nbfcFans)
 {
     QHash<QString, int> indexes;
-    if (!nbfcAvailable) {
+    if (nbfcFans.isEmpty()) {
         return indexes;
     }
 
     int nextGenericIndex = 0;
+    QSet<int> mappedNbfcIndexes;
     for (FanInfo &fan : fans) {
-        const QString name = fan.name.toLower();
-        int nbfcIndex = -1;
-        if (name.contains(QStringLiteral("cpu"))) {
-            nbfcIndex = 0;
-        } else if (name.contains(QStringLiteral("gpu"))) {
-            nbfcIndex = 1;
-        } else {
+        int nbfcIndex = bestNbfcIndexForFanName(fan.name, nbfcFans);
+        if (nbfcIndex < 0) {
             nbfcIndex = nextGenericIndex;
+        }
+        if (nbfcIndex >= nbfcFans.size()) {
+            nbfcIndex = nbfcFans.size() - 1;
         }
 
         nextGenericIndex = std::max(nextGenericIndex, nbfcIndex + 1);
         indexes.insert(fan.id, nbfcIndex);
+        mappedNbfcIndexes.insert(nbfcIndex);
         fan.capabilities.manualControl = true;
         fan.capabilities.firmwareControl = true;
         fan.capabilities.pwmControl = true;
+    }
+
+    for (const NbfcFanStatus &nbfcFan : nbfcFans) {
+        if (mappedNbfcIndexes.contains(nbfcFan.index)) {
+            continue;
+        }
+
+        FanInfo fan;
+        fan.id = QStringLiteral("windows-nbfc-fan-%1").arg(nbfcFan.index);
+        fan.name = nbfcFan.name.startsWith(QStringLiteral("NBFC"), Qt::CaseInsensitive)
+            ? nbfcFan.name
+            : QStringLiteral("NBFC %1").arg(nbfcFan.name);
+        fan.rpm = 0;
+        fan.speedPercent = nbfcFan.automatic ? nbfcFan.targetPercent : nbfcFan.currentPercent;
+        fan.automatic = nbfcFan.automatic;
+        fan.capabilities.rpmReading = false;
+        fan.capabilities.manualControl = true;
+        fan.capabilities.firmwareControl = true;
+        fan.capabilities.zeroRpm = true;
+        fan.capabilities.pwmControl = true;
+        indexes.insert(fan.id, nbfcFan.index);
+        fans.append(std::move(fan));
     }
     return indexes;
 }
@@ -969,13 +1079,15 @@ void WindowsHardwareBackend::startNbfcService()
 
     if (!async) {
         runProcess(QStringLiteral("sc.exe"), {QStringLiteral("start"), serviceName}, 5000);
-        runProcess(m_nbfcPath, {QStringLiteral("start"), QStringLiteral("-e")}, 5000);
+        runNbfcCommand(m_nbfcPath, {QStringLiteral("start"), QStringLiteral("-e")}, 5000);
+        ensureNbfcConfigured();
         return;
     }
 
     QProcess *serviceProcess = new QProcess(this);
     serviceProcess->setProgram(QStringLiteral("sc.exe"));
     serviceProcess->setArguments({QStringLiteral("start"), serviceName});
+    hideProcessConsoleWindow(*serviceProcess);
     connect(serviceProcess, &QProcess::finished, serviceProcess, &QObject::deleteLater);
     QTimer::singleShot(5000, serviceProcess, [serviceProcess] {
         if (serviceProcess->state() != QProcess::NotRunning) {
@@ -992,8 +1104,10 @@ void WindowsHardwareBackend::startNbfcService()
         QProcess *nbfcProcess = new QProcess(this);
         nbfcProcess->setProgram(m_nbfcPath);
         nbfcProcess->setArguments({QStringLiteral("start"), QStringLiteral("-e")});
+        hideProcessConsoleWindow(*nbfcProcess);
         connect(nbfcProcess, &QProcess::finished, this, [this, nbfcProcess] {
             nbfcProcess->deleteLater();
+            ensureNbfcConfigured();
             scan();
         });
         QTimer::singleShot(5000, nbfcProcess, [nbfcProcess] {
@@ -1003,6 +1117,36 @@ void WindowsHardwareBackend::startNbfcService()
         });
         nbfcProcess->start();
     });
+}
+
+void WindowsHardwareBackend::ensureNbfcConfigured()
+{
+    if (m_nbfcConfigAttempted || m_nbfcPath.isEmpty()) {
+        return;
+    }
+    m_nbfcConfigAttempted = true;
+
+    QString statusOutput;
+    if (runProcess(m_nbfcPath, {QStringLiteral("status")}, 5000, &statusOutput)
+        && !selectedNbfcConfigName(statusOutput).isEmpty()) {
+        return;
+    }
+
+    QString recommendedOutput;
+    if (!runNbfcCommand(m_nbfcPath, {QStringLiteral("config"), QStringLiteral("-r")}, 8000, &recommendedOutput)) {
+        return;
+    }
+
+    const QString recommendedConfig = firstNonEmptyLine(recommendedOutput);
+    if (recommendedConfig.isEmpty()) {
+        return;
+    }
+
+    runNbfcCommand(m_nbfcPath, {
+        QStringLiteral("config"),
+        QStringLiteral("-a"),
+        recommendedConfig,
+    }, 10000);
 }
 
 void WindowsHardwareBackend::scan()
@@ -1024,6 +1168,7 @@ void WindowsHardwareBackend::scan()
         QStringLiteral("-Command"),
         collectWindowsHardwareScript(),
     });
+    hideProcessConsoleWindow(*process);
 
     connect(process, &QProcess::finished, this, [this, process](int exitCode, QProcess::ExitStatus exitStatus) {
         m_scanRunning = false;
@@ -1054,6 +1199,10 @@ void WindowsHardwareBackend::applyHardwareSnapshot(const QJsonObject &hardware)
     QList<FanInfo> nextFans;
     QHash<QString, WmiControlTarget> nextControls;
 
+    m_nbfcPath = findNbfcExecutable();
+    ensureNbfcConfigured();
+    appendNbfcTemperatureSensor(m_nbfcPath, nextSensors);
+
     appendHardwareMonitorNamespace(QStringLiteral("root\\LibreHardwareMonitor"),
                                    arrayValue(hardware, QStringLiteral("lhmSensors")),
                                    arrayValue(hardware, QStringLiteral("lhmControls")),
@@ -1068,17 +1217,26 @@ void WindowsHardwareBackend::applyHardwareSnapshot(const QJsonObject &hardware)
                                    nextFans,
                                    nextControls,
                                    m_pendingManualFanSpeeds);
-    appendAcpiThermalZones(arrayValue(hardware, QStringLiteral("acpiZones")), nextSensors);
-    appendWindowsTemperatureProbes(arrayValue(hardware, QStringLiteral("temperatureProbes")), nextSensors);
     appendWin32Fans(arrayValue(hardware, QStringLiteral("win32Fans")), nextFans);
     appendHpInstrumentedBiosSensors(arrayValue(hardware, QStringLiteral("hpNumericSensors")), nextSensors, nextFans);
     appendNvidiaSmi(nextSensors, nextFans);
     appendNvapiFans(nextFans);
-    appendHwinfoSharedMemory(nextSensors, nextFans);
 
-    m_nbfcPath = findNbfcExecutable();
-    const bool nbfcAvailable = nbfcResponds(m_nbfcPath);
-    m_nbfcFanIndexesByFanId = nbfcFanIndexesForFans(nextFans, nbfcAvailable);
+    if (!hasTrustedPlatformTemperatureSensor(nextSensors)) {
+        appendAcpiThermalZones(arrayValue(hardware, QStringLiteral("acpiZones")), nextSensors);
+    }
+    if (nextSensors.isEmpty()) {
+        appendWindowsTemperatureProbes(arrayValue(hardware, QStringLiteral("temperatureProbes")), nextSensors);
+    }
+
+    QList<NbfcFanStatus> nbfcFans = readNbfcFanStatuses(m_nbfcPath);
+    if (nbfcFans.isEmpty() && !m_nbfcPath.isEmpty()) {
+        runNbfcCommand(m_nbfcPath, {QStringLiteral("start"), QStringLiteral("-e")}, 5000);
+        ensureNbfcConfigured();
+        nbfcFans = readNbfcFanStatuses(m_nbfcPath);
+    }
+    m_nbfcFanCount = nbfcFans.size();
+    m_nbfcFanIndexesByFanId = nbfcFanIndexesForFans(nextFans, nbfcFans);
 
     sortByName(nextSensors);
     sortByName(nextFans);
@@ -1111,19 +1269,35 @@ bool WindowsHardwareBackend::setFanSpeed(const QString &fanId, double percent)
             return false;
         }
     } else {
-        const auto nbfcIt = m_nbfcFanIndexesByFanId.constFind(fanId);
+        auto nbfcIt = m_nbfcFanIndexesByFanId.constFind(fanId);
+        if (nbfcIt == m_nbfcFanIndexesByFanId.cend() && m_nbfcFanCount == 1) {
+            m_nbfcFanIndexesByFanId.insert(fanId, 0);
+            nbfcIt = m_nbfcFanIndexesByFanId.constFind(fanId);
+        }
         if (nbfcIt == m_nbfcFanIndexesByFanId.cend() || m_nbfcPath.isEmpty()) {
             return false;
         }
 
-        if (!runProcess(m_nbfcPath, {
+        auto setNbfcSpeed = [&] {
+            QString output;
+            return runNbfcCommand(m_nbfcPath, {
                 QStringLiteral("set"),
                 QStringLiteral("-f"),
                 QString::number(nbfcIt.value()),
                 QStringLiteral("-s"),
                 QString::number(static_cast<int>(std::lround(clampedPercent))),
-            }, 3000)) {
-            return false;
+            }, 5000, &output);
+        };
+
+        if (!setNbfcSpeed()) {
+            runNbfcCommand(m_nbfcPath, {QStringLiteral("start"), QStringLiteral("-e")}, 5000);
+            ensureNbfcConfigured();
+            if (!setNbfcSpeed()) {
+                return false;
+            }
+        }
+        if (m_nbfcFanCount == 0) {
+            m_nbfcFanCount = std::max(1, nbfcIt.value() + 1);
         }
     }
 
@@ -1147,18 +1321,34 @@ bool WindowsHardwareBackend::restoreAutomaticControl(const QString &fanId)
             return false;
         }
     } else {
-        const auto nbfcIt = m_nbfcFanIndexesByFanId.constFind(fanId);
+        auto nbfcIt = m_nbfcFanIndexesByFanId.constFind(fanId);
+        if (nbfcIt == m_nbfcFanIndexesByFanId.cend() && m_nbfcFanCount == 1) {
+            m_nbfcFanIndexesByFanId.insert(fanId, 0);
+            nbfcIt = m_nbfcFanIndexesByFanId.constFind(fanId);
+        }
         if (nbfcIt == m_nbfcFanIndexesByFanId.cend() || m_nbfcPath.isEmpty()) {
             return false;
         }
 
-        if (!runProcess(m_nbfcPath, {
+        auto setNbfcAuto = [&] {
+            QString output;
+            return runNbfcCommand(m_nbfcPath, {
                 QStringLiteral("set"),
                 QStringLiteral("-f"),
                 QString::number(nbfcIt.value()),
                 QStringLiteral("-a"),
-            }, 3000)) {
-            return false;
+            }, 5000, &output);
+        };
+
+        if (!setNbfcAuto()) {
+            runNbfcCommand(m_nbfcPath, {QStringLiteral("start"), QStringLiteral("-e")}, 5000);
+            ensureNbfcConfigured();
+            if (!setNbfcAuto()) {
+                return false;
+            }
+        }
+        if (m_nbfcFanCount == 0) {
+            m_nbfcFanCount = std::max(1, nbfcIt.value() + 1);
         }
     }
 

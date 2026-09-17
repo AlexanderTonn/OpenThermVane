@@ -10,13 +10,15 @@ Component.prototype.createOperations = function()
         return;
     }
 
-    var installerExe = "@TargetDir@/nbfc/nbfc-installer.exe";
-    var installerMsi = "@TargetDir@/nbfc/nbfc-installer.msi";
-
     component.addElevatedOperation("Execute",
-        "cmd", "/C",
-        "if exist \"" + installerMsi + "\" msiexec /i \"" + installerMsi + "\" /qn /norestart & if exist \"" + installerExe + "\" \"" + installerExe + "\" /quiet /norestart",
+        "powershell.exe",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "@TargetDir@/nbfc/install-nbfc.ps1",
+        "@TargetDir@",
         "UNDOEXECUTE",
         "cmd", "/C",
-        "if exist \"" + installerMsi + "\" msiexec /x \"" + installerMsi + "\" /qn /norestart");
+        "if exist \"%ProgramFiles%\\NoteBook FanControl\\unins000.exe\" \"%ProgramFiles%\\NoteBook FanControl\\unins000.exe\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART");
 }
