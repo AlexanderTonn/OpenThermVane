@@ -20,27 +20,27 @@ jobs:
     env:
       QT_HOST: mac
       QT_ARCH: clang_64
-      QT_INSTALL_DIR: ${{ runner.temp }}/Qt
-      BUILD_DIR: ${{ github.workspace }}/build/ci-macos-release
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
       - name: Install Qt and Qt Installer Framework
         shell: bash
         run: |
+          qt_install_dir="${RUNNER_TEMP}/Qt"
           python3 -m pip install --upgrade pip aqtinstall
-          python3 -m aqt install-qt "${QT_HOST}" desktop "${QT_VERSION}" "${QT_ARCH}" -O "${QT_INSTALL_DIR}"
-          python3 -m aqt install-tool "${QT_HOST}" desktop tools_ifw "${IFW_TOOL_ID}" -O "${QT_INSTALL_DIR}"
-          binarycreator="$(find "${QT_INSTALL_DIR}/Tools" -type f -name binarycreator | head -n 1)"
+          python3 -m aqt install-qt "${QT_HOST}" desktop "${QT_VERSION}" "${QT_ARCH}" -O "${qt_install_dir}"
+          python3 -m aqt install-tool "${QT_HOST}" desktop tools_ifw "${IFW_TOOL_ID}" -O "${qt_install_dir}"
+          binarycreator="$(find "${qt_install_dir}/Tools" -type f -name binarycreator | head -n 1)"
           if [[ -z "${binarycreator}" ]]; then
             echo "binarycreator was not installed" >&2
             exit 1
           fi
           echo "BINARYCREATOR=${binarycreator}" >> "${GITHUB_ENV}"
-          echo "QT_ROOT=${QT_INSTALL_DIR}/${QT_VERSION}/macos" >> "${GITHUB_ENV}"
+          echo "QT_ROOT=${qt_install_dir}/${QT_VERSION}/macos" >> "${GITHUB_ENV}"
+          echo "BUILD_DIR=${GITHUB_WORKSPACE}/build/ci-macos-release" >> "${GITHUB_ENV}"
 
       - name: Configure
         shell: bash
@@ -56,10 +56,10 @@ jobs:
         run: cmake --build "${BUILD_DIR}" --target package_ifw --config Release --parallel
 
       - name: Upload installer
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: ThermVaneInstaller-macos
-          path: ${{ env.BUILD_DIR }}/ifw/ThermVaneInstaller.app
+          path: ${{ github.workspace }}/build/ci-macos-release/ifw/ThermVaneInstaller.app
           if-no-files-found: error
 
   windows:
@@ -68,26 +68,26 @@ jobs:
     env:
       QT_HOST: windows
       QT_ARCH: win64_msvc2022_64
-      QT_INSTALL_DIR: ${{ runner.temp }}\Qt
-      BUILD_DIR: ${{ github.workspace }}\build\ci-windows-release
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
       - name: Install Qt and Qt Installer Framework
         shell: pwsh
         run: |
+          $qtInstallDir = Join-Path $env:RUNNER_TEMP "Qt"
           py -m pip install --upgrade pip aqtinstall
-          py -m aqt install-qt $env:QT_HOST desktop $env:QT_VERSION $env:QT_ARCH -O $env:QT_INSTALL_DIR
-          py -m aqt install-tool $env:QT_HOST desktop tools_ifw $env:IFW_TOOL_ID -O $env:QT_INSTALL_DIR
-          $binaryCreator = Get-ChildItem -Path "$env:QT_INSTALL_DIR\Tools" -Recurse -Filter binarycreator.exe | Select-Object -First 1
+          py -m aqt install-qt $env:QT_HOST desktop $env:QT_VERSION $env:QT_ARCH -O $qtInstallDir
+          py -m aqt install-tool $env:QT_HOST desktop tools_ifw $env:IFW_TOOL_ID -O $qtInstallDir
+          $binaryCreator = Get-ChildItem -Path "$qtInstallDir\Tools" -Recurse -Filter binarycreator.exe | Select-Object -First 1
           if (-not $binaryCreator) {
             Write-Error "binarycreator.exe was not installed"
           }
           "BINARYCREATOR=$($binaryCreator.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "QT_ROOT=$env:QT_INSTALL_DIR\$env:QT_VERSION\msvc2022_64" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "QT_ROOT=$qtInstallDir\$env:QT_VERSION\msvc2022_64" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "BUILD_DIR=$env:GITHUB_WORKSPACE\build\ci-windows-release" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Configure
         shell: pwsh
@@ -104,10 +104,10 @@ jobs:
         run: cmake --build $env:BUILD_DIR --target package_ifw --config Release --parallel
 
       - name: Upload installer
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: ThermVaneInstaller-windows
-          path: ${{ env.BUILD_DIR }}\ifw\ThermVaneInstaller.exe
+          path: ${{ github.workspace }}/build/ci-windows-release/ifw/ThermVaneInstaller.exe
           if-no-files-found: error
 
   linux:
@@ -116,11 +116,9 @@ jobs:
     env:
       QT_HOST: linux
       QT_ARCH: linux_gcc_64
-      QT_INSTALL_DIR: ${{ runner.temp }}/Qt
-      BUILD_DIR: ${{ github.workspace }}/build/ci-linux-release
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
@@ -151,16 +149,18 @@ jobs:
       - name: Install Qt and Qt Installer Framework
         shell: bash
         run: |
+          qt_install_dir="${RUNNER_TEMP}/Qt"
           python3 -m pip install --upgrade pip aqtinstall
-          python3 -m aqt install-qt "${QT_HOST}" desktop "${QT_VERSION}" "${QT_ARCH}" -O "${QT_INSTALL_DIR}"
-          python3 -m aqt install-tool "${QT_HOST}" desktop tools_ifw "${IFW_TOOL_ID}" -O "${QT_INSTALL_DIR}"
-          binarycreator="$(find "${QT_INSTALL_DIR}/Tools" -type f -name binarycreator | head -n 1)"
+          python3 -m aqt install-qt "${QT_HOST}" desktop "${QT_VERSION}" "${QT_ARCH}" -O "${qt_install_dir}"
+          python3 -m aqt install-tool "${QT_HOST}" desktop tools_ifw "${IFW_TOOL_ID}" -O "${qt_install_dir}"
+          binarycreator="$(find "${qt_install_dir}/Tools" -type f -name binarycreator | head -n 1)"
           if [[ -z "${binarycreator}" ]]; then
             echo "binarycreator was not installed" >&2
             exit 1
           fi
           echo "BINARYCREATOR=${binarycreator}" >> "${GITHUB_ENV}"
-          echo "QT_ROOT=${QT_INSTALL_DIR}/${QT_VERSION}/gcc_64" >> "${GITHUB_ENV}"
+          echo "QT_ROOT=${qt_install_dir}/${QT_VERSION}/gcc_64" >> "${GITHUB_ENV}"
+          echo "BUILD_DIR=${GITHUB_WORKSPACE}/build/ci-linux-release" >> "${GITHUB_ENV}"
 
       - name: Configure
         shell: bash
@@ -176,8 +176,8 @@ jobs:
         run: cmake --build "${BUILD_DIR}" --target package_ifw --config Release --parallel
 
       - name: Upload installer
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: ThermVaneInstaller-linux
-          path: ${{ env.BUILD_DIR }}/ifw/ThermVaneInstaller
+          path: ${{ github.workspace }}/build/ci-linux-release/ifw/ThermVaneInstaller
           if-no-files-found: error
