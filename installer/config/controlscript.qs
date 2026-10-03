@@ -222,6 +222,10 @@ function prepareSelectedTarget(widget)
 
 Controller.prototype.TargetDirectoryPageCallback = function()
 {
+    if (systemInfo.productType !== "windows") {
+        return;
+    }
+
     var widget = gui.currentPageWidget();
     var existingTarget = findExistingOpenThermVaneDirectory();
     if (existingTarget.length > 0) {
@@ -238,5 +242,9 @@ Controller.prototype.TargetDirectoryPageCallback = function()
 
 Controller.prototype.ReadyForInstallationPageCallback = function()
 {
+    if (systemInfo.productType !== "windows") {
+        return;
+    }
+
     prepareSelectedTarget(null);
 }

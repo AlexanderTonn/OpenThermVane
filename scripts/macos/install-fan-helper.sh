@@ -10,6 +10,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 DEFAULT_HELPER="${REPO_ROOT}/build/Qt_6_12_0_for_macOS_Debug/${HELPER_NAME}"
 HELPER_SOURCE="${1:-${DEFAULT_HELPER}}"
+SUDO="sudo"
+if [[ "${EUID}" -eq 0 ]]; then
+    SUDO=""
+fi
 
 if [[ ! -x "${HELPER_SOURCE}" ]]; then
     echo "Helper not found or not executable: ${HELPER_SOURCE}" >&2
@@ -43,13 +47,13 @@ cat > "${TMP_PLIST}" <<PLIST
 </plist>
 PLIST
 
-sudo launchctl bootout system "${PLIST_PATH}" >/dev/null 2>&1 || true
-sudo rm -f "${SOCKET_PATH}"
-sudo install -o root -g wheel -m 4755 "${HELPER_SOURCE}" "${INSTALL_PATH}"
-sudo install -o root -g wheel -m 644 "${TMP_PLIST}" "${PLIST_PATH}"
+${SUDO} launchctl bootout system "${PLIST_PATH}" >/dev/null 2>&1 || true
+${SUDO} rm -f "${SOCKET_PATH}"
+${SUDO} install -o root -g wheel -m 4755 "${HELPER_SOURCE}" "${INSTALL_PATH}"
+${SUDO} install -o root -g wheel -m 644 "${TMP_PLIST}" "${PLIST_PATH}"
 rm -f "${TMP_PLIST}"
-sudo launchctl bootstrap system "${PLIST_PATH}"
-sudo launchctl kickstart -k "system/${LABEL}"
+${SUDO} launchctl bootstrap system "${PLIST_PATH}"
+${SUDO} launchctl kickstart -k "system/${LABEL}"
 
 echo "Installed ${LABEL}."
 echo "Socket: ${SOCKET_PATH}"

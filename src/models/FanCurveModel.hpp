@@ -7,6 +7,7 @@
 #include <QSet>
 #include <QString>
 #include <QStringList>
+#include <QUrl>
 #include <QVariantList>
 
 namespace thermvane {
@@ -45,6 +46,8 @@ public:
     Q_INVOKABLE void movePoint(int row, double temperature, double speed);
     Q_INVOKABLE double speedForTemperature(double temperature) const;
     Q_INVOKABLE QVariantList points() const;
+    Q_INVOKABLE bool exportCurves(const QUrl &fileUrl) const;
+    Q_INVOKABLE bool importCurves(const QUrl &fileUrl);
 
 signals:
     void selectedFanIdChanged();
@@ -60,6 +63,7 @@ private:
     void saveCurveForFan(const QString &fanId) const;
     void saveSensorIdForFan(const QString &fanId) const;
     void saveCurveAutoFanIds() const;
+    void saveAllSettings() const;
 
     QString m_selectedFanId;
     QHash<QString, QString> m_sensorIdsByFanId;

@@ -1,8 +1,16 @@
 #include "models/FanCurveModel.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <QByteArray>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSettings>
+#include <QSet>
 #include <QVariantMap>
 
 namespace thermvane {
@@ -28,6 +36,56 @@ QString settingsKeyForFanId(const QString &fanId)
 QString fanIdFromSettingsKey(const QString &key)
 {
     return QString::fromUtf8(QByteArray::fromPercentEncoding(key.toUtf8()));
+}
+
+QString localFilePath(const QUrl &fileUrl)
+{
+    if (fileUrl.isLocalFile()) {
+        return fileUrl.toLocalFile();
+    }
+    if (fileUrl.scheme().isEmpty()) {
+        return fileUrl.toString();
+    }
+    return {};
+}
+
+QString curveFilePathForExport(const QUrl &fileUrl)
+{
+    QString path = localFilePath(fileUrl);
+    if (!path.isEmpty() && QFileInfo(path).suffix().isEmpty()) {
+        path += QStringLiteral(".otvc");
+    }
+    return path;
+}
+
+QJsonArray pointsToJson(const QList<FanCurvePoint> &points)
+{
+    QJsonArray array;
+    for (const FanCurvePoint &point : points) {
+        QJsonObject pointObject;
+        pointObject.insert(QStringLiteral("temperature"), point.temperature);
+        pointObject.insert(QStringLiteral("speed"), point.fanSpeed);
+        array.append(pointObject);
+    }
+    return array;
+}
+
+QList<FanCurvePoint> pointsFromJson(const QJsonArray &array)
+{
+    QList<FanCurvePoint> points;
+    for (const QJsonValue &value : array) {
+        const QJsonObject pointObject = value.toObject();
+        const double temperature = pointObject.value(QStringLiteral("temperature")).toDouble(std::numeric_limits<double>::quiet_NaN());
+        const double speed = pointObject.value(QStringLiteral("speed")).toDouble(std::numeric_limits<double>::quiet_NaN());
+        if (!std::isfinite(temperature) || !std::isfinite(speed)) {
+            continue;
+        }
+        points.append({
+            std::clamp(temperature, 30.0, 95.0),
+            std::clamp(speed, 0.0, 100.0),
+        });
+    }
+    return points;
 }
 
 } // namespace
@@ -197,6 +255,136 @@ QVariantList FanCurveModel::points() const
     return result;
 }
 
+bool FanCurveModel::exportCurves(const QUrl &fileUrl) const
+{
+    const QString path = curveFilePathForExport(fileUrl);
+    if (path.isEmpty()) {
+        return false;
+    }
+
+    QSet<QString> fanIds;
+    for (auto it = m_curvesByFanId.constBegin(); it != m_curvesByFanId.constEnd(); ++it) {
+        fanIds.insert(it.key());
+    }
+    for (auto it = m_sensorIdsByFanId.constBegin(); it != m_sensorIdsByFanId.constEnd(); ++it) {
+        fanIds.insert(it.key());
+    }
+    for (const QString &fanId : m_curveAutoFanIds) {
+        fanIds.insert(fanId);
+    }
+    fanIds.insert(normalizedFanId(m_selectedFanId));
+
+    QStringList sortedFanIds = fanIds.values();
+    sortedFanIds.sort();
+
+    QJsonArray fanArray;
+    for (const QString &fanId : sortedFanIds) {
+        QJsonObject fanObject;
+        fanObject.insert(QStringLiteral("fanId"), fanId);
+        fanObject.insert(QStringLiteral("sensorId"), m_sensorIdsByFanId.value(fanId));
+        fanObject.insert(QStringLiteral("curveAuto"), m_curveAutoFanIds.contains(fanId));
+        fanObject.insert(QStringLiteral("points"), pointsToJson(curveForFan(fanId).points()));
+        fanArray.append(fanObject);
+    }
+
+    QStringList autoFanIds = m_curveAutoFanIds.values();
+    autoFanIds.sort();
+
+    QJsonObject root;
+    root.insert(QStringLiteral("format"), QStringLiteral("OpenThermVaneCurveProfile"));
+    root.insert(QStringLiteral("version"), 1);
+    root.insert(QStringLiteral("selectedFanId"), normalizedFanId(m_selectedFanId));
+    root.insert(QStringLiteral("curveAutoFanIds"), QJsonArray::fromStringList(autoFanIds));
+    root.insert(QStringLiteral("fans"), fanArray);
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return false;
+    }
+
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    return file.error() == QFileDevice::NoError;
+}
+
+bool FanCurveModel::importCurves(const QUrl &fileUrl)
+{
+    const QString path = localFilePath(fileUrl);
+    if (path.isEmpty()) {
+        return false;
+    }
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return false;
+    }
+
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+    if (!document.isObject()) {
+        return false;
+    }
+
+    const QJsonObject root = document.object();
+    if (root.value(QStringLiteral("format")).toString() != QStringLiteral("OpenThermVaneCurveProfile")
+        || root.value(QStringLiteral("version")).toInt() != 1) {
+        return false;
+    }
+
+    QHash<QString, FanCurve> importedCurves;
+    QHash<QString, QString> importedSensorIds;
+    QSet<QString> importedCurveAutoFanIds;
+
+    const QJsonArray fans = root.value(QStringLiteral("fans")).toArray();
+    for (const QJsonValue &value : fans) {
+        const QJsonObject fanObject = value.toObject();
+        const QString fanId = normalizedFanId(fanObject.value(QStringLiteral("fanId")).toString());
+        const QList<FanCurvePoint> points = pointsFromJson(fanObject.value(QStringLiteral("points")).toArray());
+        if (points.size() >= 2) {
+            importedCurves.insert(fanId, FanCurve(points));
+        }
+
+        const QString sensorId = fanObject.value(QStringLiteral("sensorId")).toString();
+        if (!sensorId.isEmpty()) {
+            importedSensorIds.insert(fanId, sensorId);
+        }
+
+        if (fanObject.value(QStringLiteral("curveAuto")).toBool()) {
+            importedCurveAutoFanIds.insert(fanId);
+        }
+    }
+
+    const QJsonArray autoFanIds = root.value(QStringLiteral("curveAutoFanIds")).toArray();
+    for (const QJsonValue &value : autoFanIds) {
+        const QString fanId = normalizedFanId(value.toString());
+        if (!fanId.isEmpty()) {
+            importedCurveAutoFanIds.insert(fanId);
+        }
+    }
+
+    if (importedCurves.isEmpty()) {
+        return false;
+    }
+
+    const QString selectedFanId = normalizedFanId(root.value(QStringLiteral("selectedFanId")).toString(m_selectedFanId));
+    const QString nextSelectedFanId = importedCurves.contains(selectedFanId)
+        ? selectedFanId
+        : importedCurves.constBegin().key();
+
+    beginResetModel();
+    m_curvesByFanId = importedCurves;
+    m_sensorIdsByFanId = importedSensorIds;
+    m_curveAutoFanIds = importedCurveAutoFanIds;
+    m_selectedFanId = nextSelectedFanId == fallbackFanId() ? QString() : nextSelectedFanId;
+    endResetModel();
+
+    saveAllSettings();
+
+    emit selectedFanIdChanged();
+    emit selectedSensorIdChanged();
+    emit fanSensorBindingsChanged();
+    emit curveAutoFansChanged();
+    return true;
+}
+
 FanCurve &FanCurveModel::curveForFan(const QString &fanId)
 {
     const QString key = normalizedFanId(fanId);
@@ -260,7 +448,10 @@ void FanCurveModel::loadSettings()
     }
     settings.endGroup();
 
-    settings.remove(QStringLiteral("curveAutoFanIds"));
+    const QStringList autoFanIds = settings.value(QStringLiteral("curveAutoFanIds")).toStringList();
+    for (const QString &fanId : autoFanIds) {
+        m_curveAutoFanIds.insert(normalizedFanId(fanId));
+    }
 
     settings.endGroup();
 }
@@ -326,6 +517,47 @@ void FanCurveModel::saveCurveAutoFanIds() const
 
     QSettings settings;
     settings.setValue(QStringLiteral("fanCurves/curveAutoFanIds"), ids);
+}
+
+void FanCurveModel::saveAllSettings() const
+{
+    QSettings settings;
+    settings.beginGroup(QStringLiteral("fanCurves"));
+    settings.remove(QString());
+    settings.setValue(QStringLiteral("selectedFanId"), m_selectedFanId);
+
+    settings.beginGroup(QStringLiteral("curves"));
+    for (auto it = m_curvesByFanId.constBegin(); it != m_curvesByFanId.constEnd(); ++it) {
+        settings.beginGroup(settingsKeyForFanId(it.key()));
+        settings.setValue(QStringLiteral("fanId"), it.key());
+        settings.beginWriteArray(QStringLiteral("points"));
+        const auto &points = it.value().points();
+        for (int index = 0; index < points.size(); ++index) {
+            settings.setArrayIndex(index);
+            settings.setValue(QStringLiteral("temperature"), points.at(index).temperature);
+            settings.setValue(QStringLiteral("speed"), points.at(index).fanSpeed);
+        }
+        settings.endArray();
+        settings.endGroup();
+    }
+    settings.endGroup();
+
+    settings.beginGroup(QStringLiteral("sensors"));
+    for (auto it = m_sensorIdsByFanId.constBegin(); it != m_sensorIdsByFanId.constEnd(); ++it) {
+        if (it.value().isEmpty()) {
+            continue;
+        }
+        settings.beginGroup(settingsKeyForFanId(it.key()));
+        settings.setValue(QStringLiteral("fanId"), it.key());
+        settings.setValue(QStringLiteral("sensorId"), it.value());
+        settings.endGroup();
+    }
+    settings.endGroup();
+
+    QStringList autoFanIds = m_curveAutoFanIds.values();
+    autoFanIds.sort();
+    settings.setValue(QStringLiteral("curveAutoFanIds"), autoFanIds);
+    settings.endGroup();
 }
 
 } // namespace thermvane

@@ -22,10 +22,16 @@
     "Settings": "Settings",
     "Show ThermVane": "Show ThermVane",
     "Software version": "Software version",
+    "CMake version": "App Version",
     "System Auto": "System Auto",
     "Temperature": "Temperature",
     "Unknown": "Unknown",
     "Update interval": "Update interval",
-    "no sensor": "no sensor"
+    "no sensor": "no sensor",
+    "Export": "Export",
+    "Export curve profile": "Export curve profile",
+    "Import": "Import",
+    "Import curve profile": "Import curve profile",
+    "ThermVane curve profile": "ThermVane curve profile"
   }
 }

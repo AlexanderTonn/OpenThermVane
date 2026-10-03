@@ -25,12 +25,12 @@ Item {
                     Layout.fillWidth: true
 
                     Label {
-                        text: trText("Software version")
+                        text: trText("CMake version")
                         Layout.fillWidth: true
                     }
 
                     Label {
-                        text: AppVersion && AppVersion.length > 0 ? AppVersion : trText("Unknown")
+                        text: CMakeProjectVersion && CMakeProjectVersion.length > 0 ? CMakeProjectVersion : trText("Unknown")
                         opacity: 0.8
                     }
                 }

@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import "../controls"
 
@@ -356,6 +357,7 @@ Item {
                     ComboBox {
                         id: fanCombo
                         Layout.preferredWidth: 220
+                        Layout.minimumWidth: 150
                         model: fanModel
                         textRole: "name"
                         valueRole: "fanId"
@@ -383,7 +385,9 @@ Item {
                     Label { text: trText("Sensor") }
                     ComboBox {
                         id: sensorCombo
+                        Layout.fillWidth: true
                         Layout.preferredWidth: 260
+                        Layout.minimumWidth: 160
                         model: sensorModel
                         textRole: "name"
                         valueRole: "sensorId"
@@ -402,6 +406,19 @@ Item {
                         }
                     }
 
+                    Button {
+                        text: trText("Import")
+                        Layout.preferredWidth: 112
+                        Layout.minimumWidth: 104
+                        onClicked: importCurveDialog.open()
+                    }
+
+                    Button {
+                        text: trText("Export")
+                        Layout.preferredWidth: 112
+                        Layout.minimumWidth: 104
+                        onClicked: exportCurveDialog.open()
+                    }
                 }
 
                 FanCurveEditor {
@@ -489,5 +506,31 @@ Item {
         initializeSelection()
         updateSelectedSensorTemperature()
         ensureDefaultSystemAutoForFans()
+    }
+
+    FileDialog {
+        id: importCurveDialog
+        title: trText("Import curve profile")
+        fileMode: FileDialog.OpenFile
+        nameFilters: [trText("ThermVane curve profile") + " (*.otvc)"]
+        onAccepted: {
+            if (fanCurveModel && fanCurveModel.importCurves && fanCurveModel.importCurves(selectedFile)) {
+                root.syncCurveAutoFromModel()
+                root.initializeSelection()
+                root.updateSelectedSensorTemperature()
+            }
+        }
+    }
+
+    FileDialog {
+        id: exportCurveDialog
+        title: trText("Export curve profile")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "otvc"
+        nameFilters: [trText("ThermVane curve profile") + " (*.otvc)"]
+        onAccepted: {
+            if (fanCurveModel && fanCurveModel.exportCurves)
+                fanCurveModel.exportCurves(selectedFile)
+        }
     }
 }

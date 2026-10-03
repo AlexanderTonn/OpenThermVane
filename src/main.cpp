@@ -173,6 +173,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("LanguageManager"), &languageManager);
     engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &languageManager);
     engine.rootContext()->setContextProperty(QStringLiteral("AppVersion"), QApplication::applicationVersion());
+    engine.rootContext()->setContextProperty(QStringLiteral("CMakeProjectVersion"), QStringLiteral(THERMVANE_VERSION));
 
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app, [] {
         QCoreApplication::exit(-1);

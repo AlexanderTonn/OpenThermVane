@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(OpenThermVane
-    VERSION 0.1.0
+    VERSION 1.0.0
     DESCRIPTION "Cross-platform thermal and fan control"
     LANGUAGES CXX
 )
@@ -113,6 +113,20 @@ qt_add_executable(ThermVane
 
 if(WIN32)
     set_target_properties(ThermVane PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
+if(APPLE)
+    set_target_properties(ThermVane PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_BUNDLE_NAME "ThermVane"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "org.openthermvane.ThermVane"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+    )
+endif()
+if(UNIX AND NOT APPLE)
+    set_target_properties(ThermVane PROPERTIES
+        INSTALL_RPATH "$ORIGIN/../lib"
+    )
 endif()
 
 qt_add_qml_module(ThermVane

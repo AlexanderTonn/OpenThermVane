@@ -23,8 +23,13 @@ ApplicationWindow {
     property var fanController: typeof FanController === "undefined" ? designFanController : FanController
     property var languageManager: typeof LanguageManager === "undefined" ? designLanguageManager : LanguageManager
 
-    width: 1040
-    height: 680
+    readonly property int usableMinimumWidth: 1300
+    readonly property int usableMinimumHeight: 680
+
+    width: usableMinimumWidth
+    height: usableMinimumHeight
+    minimumWidth: usableMinimumWidth
+    minimumHeight: usableMinimumHeight
     visible: true
     title: "ThermVane"
     color: "#111318"
