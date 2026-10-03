@@ -153,6 +153,30 @@ Item {
         return fanModel.restoreAutomaticControl(fanId)
     }
 
+    function forgetLastAppliedCurveSpeed(fanId) {
+        const next = Object.assign({}, lastAppliedCurveSpeeds)
+        delete next[fanId]
+        lastAppliedCurveSpeeds = next
+    }
+
+    function cancelApplyingCurveSpeed(fanId) {
+        const next = Object.assign({}, applyingCurveSpeeds)
+        delete next[fanId]
+        applyingCurveSpeeds = next
+    }
+
+    function disableCurveAutoAfterFailedApply(fanId) {
+        setCurveAuto(fanId, false)
+        forgetLastAppliedCurveSpeed(fanId)
+
+        const fanIndex = findFanIndex(fanId)
+        if (fanIndex >= 0) {
+            const fan = itemAt(fanModel, fanIndex)
+            if (fan.speedPercent !== undefined)
+                setDisplayedSpeedForFan(fanId, fan.speedPercent)
+        }
+    }
+
     function ensureDefaultSystemAutoForFans() {
         if (!fanModel || !fanModel.restoreAutomaticControl)
             return
@@ -195,20 +219,16 @@ Item {
         nextApplying[fanId] = true
         applyingCurveSpeeds = nextApplying
 
-        const nextApplied = Object.assign({}, lastAppliedCurveSpeeds)
-        nextApplied[fanId] = speed
-        lastAppliedCurveSpeeds = nextApplied
         if (fanModel.setManualSpeed(fanId, speed)) {
+            const nextApplied = Object.assign({}, lastAppliedCurveSpeeds)
+            nextApplied[fanId] = speed
+            lastAppliedCurveSpeeds = nextApplied
             setDisplayedSpeedForFan(fanId, speed)
         } else {
-            const failed = Object.assign({}, lastAppliedCurveSpeeds)
-            delete failed[fanId]
-            lastAppliedCurveSpeeds = failed
+            disableCurveAutoAfterFailedApply(fanId)
         }
 
-        nextApplying = Object.assign({}, applyingCurveSpeeds)
-        delete nextApplying[fanId]
-        applyingCurveSpeeds = nextApplying
+        cancelApplyingCurveSpeed(fanId)
     }
 
     function defaultSensorId() {
@@ -293,14 +313,14 @@ Item {
                     onDisplayedSpeedPercentChanged: root.setDisplayedSpeedForFan(fanCard.fanId, displayedSpeedPercent)
                     onManualSpeedRequested: function(speed) {
                         root.setCurveAuto(fanCard.fanId, false)
-                        delete root.lastAppliedCurveSpeeds[fanCard.fanId]
+                        root.forgetLastAppliedCurveSpeed(fanCard.fanId)
                         root.setDisplayedSpeedForFan(fanCard.fanId, speed)
                         if (fanModel.setManualSpeed && !fanModel.setManualSpeed(fanCard.fanId, speed))
                             fanCard.displayedSpeedPercent = fanCard.speedPercent
                     }
                     onManualModeRequested: function(speed) {
                         root.setCurveAuto(fanCard.fanId, false)
-                        delete root.lastAppliedCurveSpeeds[fanCard.fanId]
+                        root.forgetLastAppliedCurveSpeed(fanCard.fanId)
                         root.setDisplayedSpeedForFan(fanCard.fanId, speed)
                         if (fanModel.setManualSpeed && !fanModel.setManualSpeed(fanCard.fanId, speed))
                             fanCard.displayedSpeedPercent = fanCard.speedPercent
@@ -432,7 +452,7 @@ Item {
         }
         function onDataChanged() {
             if (root.isCurveAuto(root.selectedFanId)) {
-                delete root.lastAppliedCurveSpeeds[root.selectedFanId]
+                root.forgetLastAppliedCurveSpeed(root.selectedFanId)
                 root.applyCurve(root.selectedFanId)
             }
         }

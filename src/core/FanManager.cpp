@@ -12,6 +12,22 @@ FanManager::FanManager(QObject *parent)
 {
 }
 
+FanManager::~FanManager()
+{
+    if (!m_backend) {
+        return;
+    }
+
+    QSet<QString> fanIds = m_emergencyControlledFans;
+    for (auto it = m_manualSpeedOverrides.cbegin(); it != m_manualSpeedOverrides.cend(); ++it) {
+        fanIds.insert(it.key());
+    }
+
+    for (const QString &fanId : std::as_const(fanIds)) {
+        m_backend->restoreAutomaticControl(fanId);
+    }
+}
+
 void FanManager::setBackend(IHardwareBackend *backend)
 {
     if (m_backend == backend) {

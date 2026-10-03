@@ -16,7 +16,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 LinguistTools)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Widgets LinguistTools)
 
 qt_standard_project_setup(REQUIRES 6.5)
 
@@ -88,6 +88,7 @@ set(THERMVANE_TRANSLATIONS
 set(THERMVANE_PROJECT_FILES
     ThermVane.qmlproject
     qtquickcontrols2.conf
+    assets/icons/thermvane-icon.png
     README.md
     docs/architecture.md
     docs/packaging.md
@@ -131,6 +132,12 @@ qt_add_translations(ThermVane
     RESOURCE_PREFIX /i18n
 )
 
+qt_add_resources(ThermVane "ThermVaneAppAssets"
+    PREFIX "/"
+    FILES
+        assets/icons/thermvane-icon.png
+)
+
 target_include_directories(ThermVane PRIVATE src)
 target_compile_definitions(ThermVane PRIVATE
     THERMVANE_VERSION="${PROJECT_VERSION}"
@@ -142,6 +149,7 @@ target_link_libraries(ThermVane PRIVATE
     Qt6::Qml
     Qt6::Quick
     Qt6::QuickControls2
+    Qt6::Widgets
 )
 
 if(APPLE)

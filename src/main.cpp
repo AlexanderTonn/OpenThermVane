@@ -6,11 +6,16 @@
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QCoreApplication>
-#include <QGuiApplication>
+#include <QAction>
+#include <QApplication>
+#include <QIcon>
+#include <QMenu>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QSystemTrayIcon>
 #include <QQuickStyle>
 #include <QTextStream>
+#include <QWindow>
 #include <QtGlobal>
 
 #if defined(Q_OS_WIN) || defined(_WIN32)
@@ -115,6 +120,17 @@ int listSensors(int argc, char *argv[])
     return 0;
 }
 
+void showWindow(QWindow *window)
+{
+    if (!window) {
+        return;
+    }
+
+    window->show();
+    window->raise();
+    window->requestActivate();
+}
+
 } // namespace
 
 int main(int argc, char *argv[])
@@ -131,10 +147,12 @@ int main(int argc, char *argv[])
     qputenv("QT_QUICK_CONTROLS_MATERIAL_THEME", "Dark");
     qputenv("QT_QUICK_CONTROLS_MATERIAL_ACCENT", "#55d6be");
 
-    QGuiApplication app(argc, argv);
-    QGuiApplication::setOrganizationName(QStringLiteral("OpenThermVane"));
-    QGuiApplication::setApplicationName(QStringLiteral("ThermVane"));
-    QGuiApplication::setApplicationVersion(QStringLiteral(THERMVANE_VERSION));
+    QApplication app(argc, argv);
+    QApplication::setOrganizationName(QStringLiteral("OpenThermVane"));
+    QApplication::setApplicationName(QStringLiteral("ThermVane"));
+    QApplication::setApplicationVersion(QStringLiteral(THERMVANE_VERSION));
+    const QIcon appIcon(QStringLiteral(":/assets/icons/thermvane-icon.png"));
+    QApplication::setWindowIcon(appIcon);
     QQuickStyle::setStyle(QStringLiteral("Material"));
 
     QCommandLineParser parser;
@@ -153,12 +171,46 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("FanCurveModel"), application.fanCurveModel());
     engine.rootContext()->setContextProperty(QStringLiteral("FanController"), application.fanController());
     engine.rootContext()->setContextProperty(QStringLiteral("LanguageManager"), &languageManager);
-    engine.rootContext()->setContextProperty(QStringLiteral("AppVersion"), QGuiApplication::applicationVersion());
+    engine.rootContext()->setContextProperty(QStringLiteral("AppVersion"), QApplication::applicationVersion());
 
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app, [] {
         QCoreApplication::exit(-1);
     }, Qt::QueuedConnection);
 
     engine.loadFromModule(QStringLiteral("OpenThermVane"), QStringLiteral("Main"));
-    return QGuiApplication::exec();
+
+    QWindow *mainWindow = nullptr;
+    if (!engine.rootObjects().isEmpty()) {
+        mainWindow = qobject_cast<QWindow *>(engine.rootObjects().constFirst());
+        if (mainWindow) {
+            mainWindow->setIcon(appIcon);
+        }
+    }
+
+    QMenu trayMenu;
+    QAction showAction(QObject::tr("Show ThermVane"), &trayMenu);
+    QAction quitAction(QObject::tr("Quit"), &trayMenu);
+    trayMenu.addAction(&showAction);
+    trayMenu.addSeparator();
+    trayMenu.addAction(&quitAction);
+
+    QSystemTrayIcon trayIcon;
+    if (QSystemTrayIcon::isSystemTrayAvailable() && !appIcon.isNull()) {
+        trayIcon.setIcon(appIcon);
+        trayIcon.setToolTip(QStringLiteral("ThermVane"));
+        trayIcon.setContextMenu(&trayMenu);
+        QObject::connect(&showAction, &QAction::triggered, &app, [mainWindow] {
+            showWindow(mainWindow);
+        });
+        QObject::connect(&quitAction, &QAction::triggered, &app, &QCoreApplication::quit);
+        QObject::connect(&trayIcon, &QSystemTrayIcon::activated, &app,
+                         [mainWindow](QSystemTrayIcon::ActivationReason reason) {
+            if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
+                showWindow(mainWindow);
+            }
+        });
+        trayIcon.show();
+    }
+
+    return QApplication::exec();
 }

@@ -18,6 +18,7 @@ class FanManager final : public QObject
 
 public:
     explicit FanManager(QObject *parent = nullptr);
+    ~FanManager() override;
 
     void setBackend(IHardwareBackend *backend);
     QList<FanInfo> fans() const;

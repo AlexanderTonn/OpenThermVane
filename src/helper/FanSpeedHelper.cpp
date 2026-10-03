@@ -1,5 +1,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOKitLib.h>
+#include <IOKit/IOMessage.h>
+#include <IOKit/pwr_mgt/IOPMLib.h>
 
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -8,17 +10,20 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cerrno>
-#include <chrono>
 #include <cmath>
 #include <csignal>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <mutex>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 
@@ -26,7 +31,12 @@ constexpr uint32_t kSmcSelector = 2;
 constexpr uint8_t kSmcCommandReadKeyInfo = 9;
 constexpr uint8_t kSmcCommandReadBytes = 5;
 constexpr uint8_t kSmcCommandWriteBytes = 6;
-constexpr int kServerIdleTimeoutSeconds = 600;
+
+std::mutex g_controlledFansMutex;
+std::set<std::string> g_controlledFans;
+std::atomic_bool g_running = true;
+std::mutex g_powerRunLoopMutex;
+CFRunLoopRef g_powerRunLoop = nullptr;
 
 struct SmcVersion
 {
@@ -344,6 +354,139 @@ bool setFanSpeed(const std::string &fanId, double percent)
     return true;
 }
 
+bool restoreFanControl(const std::string &fanId)
+{
+    const auto fanIndex = fanIndexFromId(fanId);
+    if (!fanIndex) {
+        std::cerr << "Invalid fan id\n";
+        return false;
+    }
+
+    AppleSmcConnection smc;
+    if (!smc.isOpen()) {
+        std::cerr << "Could not open Apple SMC\n";
+        return false;
+    }
+
+    bool modeSet = false;
+    double maskValue = 0.0;
+    if (smc.readNumber("FS! ", maskValue)) {
+        const uint16_t bit = static_cast<uint16_t>(1U << *fanIndex);
+        const uint16_t mask = static_cast<uint16_t>(std::lround(std::clamp(maskValue, 0.0, 65535.0)))
+            & static_cast<uint16_t>(~bit);
+        modeSet = smc.writeNumber("FS! ", mask);
+    }
+    if (!modeSet) {
+        modeSet = smc.writeNumber(fanKey(*fanIndex, "Md"), 0.0)
+            || smc.writeNumber(fanKey(*fanIndex, "md"), 0.0);
+    }
+
+    smc.writeNumber("Ftst", 0.0);
+    return modeSet;
+}
+
+void markFanControlled(const std::string &fanId)
+{
+    std::scoped_lock lock(g_controlledFansMutex);
+    g_controlledFans.insert(fanId);
+}
+
+void markFanRestored(const std::string &fanId)
+{
+    std::scoped_lock lock(g_controlledFansMutex);
+    g_controlledFans.erase(fanId);
+}
+
+std::vector<std::string> controlledFanIds()
+{
+    std::scoped_lock lock(g_controlledFansMutex);
+    return {g_controlledFans.begin(), g_controlledFans.end()};
+}
+
+void restoreAllControlledFans(const char *reason)
+{
+    const std::vector<std::string> fanIds = controlledFanIds();
+    if (fanIds.empty()) {
+        return;
+    }
+
+    std::cerr << "Restoring " << fanIds.size() << " fan(s) to automatic control before " << reason << '\n';
+    for (const std::string &fanId : fanIds) {
+        if (restoreFanControl(fanId)) {
+            markFanRestored(fanId);
+        }
+    }
+}
+
+void powerCallback(void *refCon, io_service_t service, natural_t messageType, void *messageArgument)
+{
+    auto *connection = static_cast<io_connect_t *>(refCon);
+    switch (messageType) {
+    case kIOMessageSystemWillSleep:
+        restoreAllControlledFans("system sleep");
+        if (connection && *connection != IO_OBJECT_NULL) {
+            IOAllowPowerChange(*connection, reinterpret_cast<long>(messageArgument));
+        }
+        break;
+    default:
+        (void)service;
+        break;
+    }
+}
+
+void runPowerNotificationLoop()
+{
+    IONotificationPortRef notificationPort = nullptr;
+    io_object_t notifier = IO_OBJECT_NULL;
+    io_connect_t connection = IORegisterForSystemPower(nullptr, &notificationPort, powerCallback, &notifier);
+    if (connection == IO_OBJECT_NULL || !notificationPort) {
+        std::cerr << "Could not register power notifications\n";
+        return;
+    }
+
+    CFRunLoopSourceRef source = IONotificationPortGetRunLoopSource(notificationPort);
+    if (source) {
+        CFRunLoopRef runLoop = CFRunLoopGetCurrent();
+        {
+            std::scoped_lock lock(g_powerRunLoopMutex);
+            g_powerRunLoop = runLoop;
+        }
+        CFRetain(runLoop);
+        CFRunLoopAddSource(runLoop, source, kCFRunLoopDefaultMode);
+
+        while (g_running.load()) {
+            CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1.0, false);
+        }
+
+        CFRunLoopRemoveSource(runLoop, source, kCFRunLoopDefaultMode);
+        {
+            std::scoped_lock lock(g_powerRunLoopMutex);
+            g_powerRunLoop = nullptr;
+        }
+        CFRelease(runLoop);
+    }
+
+    if (notifier != IO_OBJECT_NULL) {
+        IODeregisterForSystemPower(&notifier);
+    }
+    IONotificationPortDestroy(notificationPort);
+    IOServiceClose(connection);
+}
+
+void stopPowerNotificationLoop()
+{
+    g_running.store(false);
+    std::scoped_lock lock(g_powerRunLoopMutex);
+    if (g_powerRunLoop) {
+        CFRunLoopStop(g_powerRunLoop);
+    }
+}
+
+void handleTerminationSignal(int)
+{
+    g_running.store(false);
+}
+
 bool writeAll(int fd, const std::string &message)
 {
     const char *data = message.data();
@@ -385,6 +528,22 @@ void handleClient(int clientFd)
         return;
     }
 
+    if (command == "RESTORE") {
+        std::string fanId;
+        stream >> fanId;
+        if (fanId.empty() || stream.fail()) {
+            writeAll(clientFd, "ERR invalid command\n");
+            return;
+        }
+        if (restoreFanControl(fanId)) {
+            markFanRestored(fanId);
+            writeAll(clientFd, "OK\n");
+        } else {
+            writeAll(clientFd, "ERR smc restore failed\n");
+        }
+        return;
+    }
+
     std::string fanId;
     double percent = 0.0;
     stream >> fanId >> percent;
@@ -394,12 +553,20 @@ void handleClient(int clientFd)
         return;
     }
 
-    writeAll(clientFd, setFanSpeed(fanId, percent) ? "OK\n" : "ERR smc write failed\n");
+    if (setFanSpeed(fanId, percent)) {
+        markFanControlled(fanId);
+        writeAll(clientFd, "OK\n");
+    } else {
+        writeAll(clientFd, "ERR smc write failed\n");
+    }
 }
 
 int runServer(const std::string &socketPath)
 {
+    g_running.store(true);
     signal(SIGPIPE, SIG_IGN);
+    signal(SIGTERM, handleTerminationSignal);
+    signal(SIGINT, handleTerminationSignal);
     unlink(socketPath.c_str());
 
     const int serverFd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -431,8 +598,8 @@ int runServer(const std::string &socketPath)
         return 1;
     }
 
-    auto lastActivity = std::chrono::steady_clock::now();
-    while (true) {
+    std::thread powerThread(runPowerNotificationLoop);
+    while (g_running.load()) {
         fd_set fds;
         FD_ZERO(&fds);
         FD_SET(serverFd, &fds);
@@ -441,17 +608,16 @@ int runServer(const std::string &socketPath)
         if (ready > 0 && FD_ISSET(serverFd, &fds)) {
             const int clientFd = accept(serverFd, nullptr, nullptr);
             if (clientFd >= 0) {
-                lastActivity = std::chrono::steady_clock::now();
                 handleClient(clientFd);
                 close(clientFd);
             }
         }
+    }
 
-        const auto idleSeconds = std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::steady_clock::now() - lastActivity);
-        if (idleSeconds.count() >= kServerIdleTimeoutSeconds) {
-            break;
-        }
+    restoreAllControlledFans("helper shutdown");
+    stopPowerNotificationLoop();
+    if (powerThread.joinable()) {
+        powerThread.join();
     }
 
     close(serverFd);
@@ -467,8 +633,13 @@ int main(int argc, char *argv[])
         return runServer(argv[2]);
     }
 
+    if (argc == 3 && std::string(argv[1]) == "--restore") {
+        return restoreFanControl(argv[2]) ? 0 : 1;
+    }
+
     if (argc != 3) {
         std::cerr << "Usage: ThermVaneFanHelper <fan-id> <percent>\n"
+                  << "       ThermVaneFanHelper --restore <fan-id>\n"
                   << "       ThermVaneFanHelper --server <socket-path>\n";
         return 2;
     }

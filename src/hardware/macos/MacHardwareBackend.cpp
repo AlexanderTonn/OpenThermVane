@@ -1,8 +1,6 @@
 #include "hardware/macos/MacHardwareBackend.hpp"
 
 #include <QCollator>
-#include <QCoreApplication>
-#include <QDateTime>
 #include <QDebug>
 #include <QFileInfo>
 #include <QProcess>
@@ -21,6 +19,8 @@
 #ifdef Q_OS_MACOS
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOKitLib.h>
+#include <IOKit/IOMessage.h>
+#include <IOKit/pwr_mgt/IOPMLib.h>
 #include <sys/socket.h>
 #include <sys/sysctl.h>
 #include <sys/un.h>
@@ -887,24 +887,47 @@ QString smcFanId(int fanIndex)
 }
 
 
-QString shellQuote(const QString &value)
-{
-    QString escaped = value;
-    escaped.replace(QStringLiteral("'"), QStringLiteral("'\\''"));
-    return QStringLiteral("'") + escaped + QStringLiteral("'");
-}
-
-QString appleScriptString(const QString &value)
-{
-    QString escaped = value;
-    escaped.replace(QStringLiteral("\\"), QStringLiteral("\\\\"));
-    escaped.replace(QStringLiteral("\""), QStringLiteral("\\\""));
-    return QStringLiteral("\"") + escaped + QStringLiteral("\"");
-}
-
 QString privilegedHelperSocketPath()
 {
-    return QStringLiteral("/tmp/thermvane-fan-helper-%1.sock").arg(getuid());
+    return QStringLiteral("/tmp/thermvane-fan-helper.sock");
+}
+
+QString installedPrivilegedHelperPath()
+{
+    return QStringLiteral("/Library/PrivilegedHelperTools/ThermVaneFanHelper");
+}
+
+bool runInstalledPrivilegedHelper(const QStringList &arguments)
+{
+    const QString helperPath = installedPrivilegedHelperPath();
+    const QFileInfo helperInfo(helperPath);
+    if (!helperInfo.exists() || !helperInfo.isExecutable()) {
+        return false;
+    }
+
+    QProcess helper;
+    helper.setProgram(helperPath);
+    helper.setArguments(arguments);
+    helper.setProcessChannelMode(QProcess::MergedChannels);
+    helper.start();
+    if (!helper.waitForStarted(1000)) {
+        return false;
+    }
+    if (!helper.waitForFinished(2500)) {
+        helper.kill();
+        helper.waitForFinished(500);
+        qWarning() << "Fan helper did not finish in time" << helperPath;
+        return false;
+    }
+    if (helper.exitStatus() == QProcess::NormalExit && helper.exitCode() == 0) {
+        return true;
+    }
+
+    const QString output = QString::fromUtf8(helper.readAll()).trimmed();
+    if (!output.isEmpty()) {
+        qWarning() << "Installed fan helper failed" << output;
+    }
+    return false;
 }
 
 bool writeAllToSocket(int socketFd, const QByteArray &message)
@@ -983,66 +1006,28 @@ bool sendFanSpeedToHelperServer(const QString &fanId, double percent)
     return sendCommandToHelperServer(command);
 }
 
-bool startPrivilegedHelperServer(const QString &fanId, double percent)
+bool runInstalledHelperSetFanSpeed(const QString &fanId, double percent)
 {
-    if (qEnvironmentVariableIsSet("THERMVANE_NO_ADMIN_FALLBACK")) {
-        return false;
-    }
-
-    static qint64 lastStartRequestMs = 0;
-    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-    if (nowMs - lastStartRequestMs < 15000) {
-        return true;
-    }
-    lastStartRequestMs = nowMs;
-
-    const QString helperPath = QCoreApplication::applicationDirPath() + QStringLiteral("/ThermVaneFanHelper");
-    if (!QFileInfo::exists(helperPath)) {
-        qWarning() << "Fan helper not found" << helperPath;
-        return false;
-    }
-
-    const QString logPath = QStringLiteral("/tmp/thermvane-fan-helper-%1.log").arg(getuid());
-    const QString command = QStringLiteral("cd / && ")
-        + shellQuote(helperPath)
-        + QStringLiteral(" --server ")
-        + shellQuote(privilegedHelperSocketPath())
-        + QStringLiteral(" </dev/null >> ")
-        + shellQuote(logPath)
-        + QStringLiteral(" 2>&1 & sleep 0.4; ")
-        + shellQuote(helperPath)
-        + QStringLiteral(" ")
-        + shellQuote(fanId)
-        + QStringLiteral(" ")
-        + shellQuote(QString::number(percent, 'f', 2))
-        + QStringLiteral(" >> ")
-        + shellQuote(logPath)
-        + QStringLiteral(" 2>&1");
-    const QString script = QStringLiteral("do shell script ")
-        + appleScriptString(command)
-        + QStringLiteral(" with administrator privileges");
-
-    if (!QProcess::startDetached(QStringLiteral("/usr/bin/osascript"), {QStringLiteral("-e"), script})) {
-        qWarning() << "Could not start privileged fan helper request";
-        return false;
-    }
-
-    return true;
+    return runInstalledPrivilegedHelper({
+        fanId,
+        QString::number(percent, 'f', 2),
+    });
 }
 
-bool runPrivilegedSetFanSpeed(const QString &fanId, double percent)
+bool sendRestoreFanToHelperServer(const QString &fanId)
 {
-    if (sendFanSpeedToHelperServer(fanId, percent)) {
-        return true;
-    }
+    const QByteArray command = QByteArrayLiteral("RESTORE ")
+        + fanId.toUtf8()
+        + QByteArrayLiteral("\n");
+    return sendCommandToHelperServer(command);
+}
 
-    if (!startPrivilegedHelperServer(fanId, percent)) {
-        return false;
-    }
-
-    // The administrator dialog is asynchronous. Keep the requested UI state;
-    // the next manual commit will use the helper server once it is ready.
-    return true;
+bool runInstalledHelperRestoreFan(const QString &fanId)
+{
+    return runInstalledPrivilegedHelper({
+        QStringLiteral("--restore"),
+        fanId,
+    });
 }
 
 int fanIndexFromId(const QString &fanId)
@@ -1527,8 +1512,79 @@ QString readableSensorName(const QString &rawName)
 MacHardwareBackend::MacHardwareBackend(QObject *parent)
     : IHardwareBackend(parent)
 {
+#ifdef Q_OS_MACOS
+    m_powerConnection = IORegisterForSystemPower(this, &m_powerNotificationPort, &MacHardwareBackend::powerCallback, &m_powerNotifier);
+    if (m_powerConnection != IO_OBJECT_NULL && m_powerNotificationPort) {
+        m_powerRunLoopSource = IONotificationPortGetRunLoopSource(m_powerNotificationPort);
+        if (m_powerRunLoopSource) {
+            CFRunLoopAddSource(CFRunLoopGetMain(), m_powerRunLoopSource, kCFRunLoopCommonModes);
+        }
+    }
+#endif
     scan();
 }
+
+MacHardwareBackend::~MacHardwareBackend()
+{
+#ifdef Q_OS_MACOS
+    restorePendingManualFans();
+
+    if (m_powerRunLoopSource) {
+        CFRunLoopRemoveSource(CFRunLoopGetMain(), m_powerRunLoopSource, kCFRunLoopCommonModes);
+        m_powerRunLoopSource = nullptr;
+    }
+    if (m_powerNotifier != IO_OBJECT_NULL) {
+        IODeregisterForSystemPower(&m_powerNotifier);
+        m_powerNotifier = IO_OBJECT_NULL;
+    }
+    if (m_powerNotificationPort) {
+        IONotificationPortDestroy(m_powerNotificationPort);
+        m_powerNotificationPort = nullptr;
+    }
+    if (m_powerConnection != IO_OBJECT_NULL) {
+        IOServiceClose(m_powerConnection);
+        m_powerConnection = IO_OBJECT_NULL;
+    }
+#endif
+}
+
+#ifdef Q_OS_MACOS
+void MacHardwareBackend::powerCallback(void *refCon, io_service_t service, natural_t messageType, void *messageArgument)
+{
+    auto *backend = static_cast<MacHardwareBackend *>(refCon);
+    if (backend) {
+        backend->handlePowerMessage(service, messageType, messageArgument);
+    }
+}
+
+void MacHardwareBackend::handlePowerMessage(io_service_t service, natural_t messageType, void *messageArgument)
+{
+    Q_UNUSED(service)
+
+    switch (messageType) {
+    case kIOMessageSystemWillSleep:
+        restorePendingManualFans();
+        if (m_powerConnection != IO_OBJECT_NULL) {
+            IOAllowPowerChange(m_powerConnection, reinterpret_cast<long>(messageArgument));
+        }
+        break;
+    case kIOMessageSystemHasPoweredOn:
+    case kIOMessageSystemWillPowerOn:
+        scan();
+        break;
+    default:
+        break;
+    }
+}
+
+void MacHardwareBackend::restorePendingManualFans()
+{
+    const QStringList fanIds = m_pendingManualFanSpeeds.keys();
+    for (const QString &fanId : fanIds) {
+        restoreAutomaticControl(fanId);
+    }
+}
+#endif
 
 void MacHardwareBackend::scan()
 {
@@ -1614,6 +1670,12 @@ bool MacHardwareBackend::setFanSpeed(const QString &fanId, double percent)
         return true;
     }
 
+    if (runInstalledHelperSetFanSpeed(fanId, clampedPercent)) {
+        m_pendingManualFanSpeeds.insert(fanId, clampedPercent);
+        scan();
+        return true;
+    }
+
     AppleSmcReader smc;
     if (!smc.isOpen()) {
         return false;
@@ -1644,22 +1706,12 @@ bool MacHardwareBackend::setFanSpeed(const QString &fanId, double percent)
         return true;
     }
 
-    qWarning() << "Direct SMC fan write failed; trying privileged helper"
+    qWarning() << "Failed to set fan speed; privileged helper is not running or direct SMC write is denied"
                << "fan" << fanId
                << "percent" << clampedPercent
                << "targetRpm" << targetRpm
                << "modeSet" << modeSet
                << "targetSet" << targetSetAfterMode;
-
-    if (runPrivilegedSetFanSpeed(fanId, clampedPercent)) {
-        m_pendingManualFanSpeeds.insert(fanId, clampedPercent);
-        scan();
-        return true;
-    }
-
-    qWarning() << "Failed to set fan speed"
-               << "fan" << fanId
-               << "percent" << clampedPercent;
 #endif
 
     return false;
@@ -1671,6 +1723,18 @@ bool MacHardwareBackend::restoreAutomaticControl(const QString &fanId)
     const int fanIndex = fanIndexFromId(fanId);
     if (fanIndex < 0) {
         return false;
+    }
+
+    if (sendRestoreFanToHelperServer(fanId)) {
+        m_pendingManualFanSpeeds.remove(fanId);
+        scan();
+        return true;
+    }
+
+    if (runInstalledHelperRestoreFan(fanId)) {
+        m_pendingManualFanSpeeds.remove(fanId);
+        scan();
+        return true;
     }
 
     AppleSmcReader smc;
