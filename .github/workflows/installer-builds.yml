@@ -10,8 +10,9 @@ on:
       - 'v*'
 
 env:
-  QT_VERSION: 6.12.0
-  IFW_TOOL_ID: qt.tools.ifw.4110
+  QT_VERSION: 6.10.0
+  IFW_TOOL_ID: qt.tools.ifw.47
+  AQT_BASE_URL: https://download.qt.io
 
 jobs:
   macos:
@@ -26,13 +27,22 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Install Qt and Qt Installer Framework
         shell: bash
         run: |
+          set -euo pipefail
           qt_install_dir="${RUNNER_TEMP}/Qt"
-          python3 -m pip install --upgrade pip aqtinstall
-          python3 -m aqt install-qt "${QT_HOST}" desktop "${QT_VERSION}" "${QT_ARCH}" -O "${qt_install_dir}"
-          python3 -m aqt install-tool "${QT_HOST}" desktop tools_ifw "${IFW_TOOL_ID}" -O "${qt_install_dir}"
+          aqt_venv="${RUNNER_TEMP}/aqt-venv"
+          python3 -m venv "${aqt_venv}"
+          aqt_python="${aqt_venv}/bin/python"
+          "${aqt_python}" -m pip install --upgrade pip aqtinstall
+          "${aqt_python}" -m aqt install-qt -b "${AQT_BASE_URL}" "${QT_HOST}" desktop "${QT_VERSION}" "${QT_ARCH}" -O "${qt_install_dir}"
+          "${aqt_python}" -m aqt install-tool -b "${AQT_BASE_URL}" "${QT_HOST}" desktop tools_ifw "${IFW_TOOL_ID}" -O "${qt_install_dir}"
           binarycreator="$(find "${qt_install_dir}/Tools" -type f -name binarycreator | head -n 1)"
           if [[ -z "${binarycreator}" ]]; then
             echo "binarycreator was not installed" >&2
@@ -74,13 +84,23 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Install Qt and Qt Installer Framework
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           $qtInstallDir = Join-Path $env:RUNNER_TEMP "Qt"
-          py -m pip install --upgrade pip aqtinstall
-          py -m aqt install-qt $env:QT_HOST desktop $env:QT_VERSION $env:QT_ARCH -O $qtInstallDir
-          py -m aqt install-tool $env:QT_HOST desktop tools_ifw $env:IFW_TOOL_ID -O $qtInstallDir
+          $aqtVenv = Join-Path $env:RUNNER_TEMP "aqt-venv"
+          python -m venv $aqtVenv
+          $aqtPython = Join-Path $aqtVenv "Scripts\python.exe"
+          & $aqtPython -m pip install --upgrade pip aqtinstall
+          & $aqtPython -m aqt install-qt -b $env:AQT_BASE_URL $env:QT_HOST desktop $env:QT_VERSION $env:QT_ARCH -O $qtInstallDir
+          & $aqtPython -m aqt install-tool -b $env:AQT_BASE_URL $env:QT_HOST desktop tools_ifw $env:IFW_TOOL_ID -O $qtInstallDir
           $binaryCreator = Get-ChildItem -Path "$qtInstallDir\Tools" -Recurse -Filter binarycreator.exe | Select-Object -First 1
           if (-not $binaryCreator) {
             Write-Error "binarycreator.exe was not installed"
@@ -122,6 +142,11 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Install system dependencies
         shell: bash
         run: |
@@ -149,10 +174,14 @@ jobs:
       - name: Install Qt and Qt Installer Framework
         shell: bash
         run: |
+          set -euo pipefail
           qt_install_dir="${RUNNER_TEMP}/Qt"
-          python3 -m pip install --upgrade pip aqtinstall
-          python3 -m aqt install-qt "${QT_HOST}" desktop "${QT_VERSION}" "${QT_ARCH}" -O "${qt_install_dir}"
-          python3 -m aqt install-tool "${QT_HOST}" desktop tools_ifw "${IFW_TOOL_ID}" -O "${qt_install_dir}"
+          aqt_venv="${RUNNER_TEMP}/aqt-venv"
+          python3 -m venv "${aqt_venv}"
+          aqt_python="${aqt_venv}/bin/python"
+          "${aqt_python}" -m pip install --upgrade pip aqtinstall
+          "${aqt_python}" -m aqt install-qt -b "${AQT_BASE_URL}" "${QT_HOST}" desktop "${QT_VERSION}" "${QT_ARCH}" -O "${qt_install_dir}"
+          "${aqt_python}" -m aqt install-tool -b "${AQT_BASE_URL}" "${QT_HOST}" desktop tools_ifw "${IFW_TOOL_ID}" -O "${qt_install_dir}"
           binarycreator="$(find "${qt_install_dir}/Tools" -type f -name binarycreator | head -n 1)"
           if [[ -z "${binarycreator}" ]]; then
             echo "binarycreator was not installed" >&2
