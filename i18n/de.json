@@ -1,0 +1,31 @@
+{
+  "code": "de",
+  "flag": "🇩🇪",
+  "name": "Deutsch",
+  "strings": {
+    "About": "Info",
+    "Auto": "Auto",
+    "Curve": "Kurve",
+    "Dashboard": "Dashboard",
+    "Emergency": "Notfall",
+    "Fan": "Lüfter",
+    "Fans": "Lüfter",
+    "Manual": "Manuell",
+    "Minimum": "Minimum",
+    "No readable temperature values.": "Keine lesbaren Temperaturwerte.",
+    "No temperature sensors with readable values found.": "Keine Temperatursensoren mit lesbaren Werten gefunden.",
+    "Only temperature sensors with readable values are shown.": "Es werden nur Temperatursensoren mit lesbaren Werten angezeigt.",
+    "Quit": "Beenden",
+    "Safety": "Sicherheit",
+    "Sensor": "Sensor",
+    "Sensors": "Sensoren",
+    "Settings": "Einstellungen",
+    "Show ThermVane": "ThermVane anzeigen",
+    "Software version": "Softwareversion",
+    "System Auto": "System-Auto",
+    "Temperature": "Temperatur",
+    "Unknown": "Unbekannt",
+    "Update interval": "Aktualisierungsintervall",
+    "no sensor": "kein Sensor"
+  }
+}

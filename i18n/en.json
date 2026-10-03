@@ -1,0 +1,31 @@
+{
+  "code": "en",
+  "flag": "🇬🇧",
+  "name": "English",
+  "strings": {
+    "About": "About",
+    "Auto": "Auto",
+    "Curve": "Curve",
+    "Dashboard": "Dashboard",
+    "Emergency": "Emergency",
+    "Fan": "Fan",
+    "Fans": "Fans",
+    "Manual": "Manual",
+    "Minimum": "Minimum",
+    "No readable temperature values.": "No readable temperature values.",
+    "No temperature sensors with readable values found.": "No temperature sensors with readable values found.",
+    "Only temperature sensors with readable values are shown.": "Only temperature sensors with readable values are shown.",
+    "Quit": "Quit",
+    "Safety": "Safety",
+    "Sensor": "Sensor",
+    "Sensors": "Sensors",
+    "Settings": "Settings",
+    "Show ThermVane": "Show ThermVane",
+    "Software version": "Software version",
+    "System Auto": "System Auto",
+    "Temperature": "Temperature",
+    "Unknown": "Unknown",
+    "Update interval": "Update interval",
+    "no sensor": "no sensor"
+  }
+}

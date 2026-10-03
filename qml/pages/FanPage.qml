@@ -6,6 +6,8 @@ import "../controls"
 Item {
     id: root
 
+    function trText(key) { return typeof I18n === "undefined" ? key : I18n.translate(key, I18n.language) }
+
     property var fanModel
     property var sensorModel
     property var fanCurveModel
@@ -286,7 +288,7 @@ Item {
         spacing: 14
 
         GroupBox {
-            title: qsTr("Fan")
+            title: trText("Fan")
             Layout.preferredWidth: 360
             Layout.fillHeight: true
 
@@ -338,7 +340,7 @@ Item {
         }
 
         GroupBox {
-            title: qsTr("Curve")
+            title: trText("Curve")
             Layout.fillWidth: true
             Layout.fillHeight: true
 
@@ -350,7 +352,7 @@ Item {
                     Layout.fillWidth: true
                     spacing: 12
 
-                    Label { text: qsTr("Fan") }
+                    Label { text: trText("Fan") }
                     ComboBox {
                         id: fanCombo
                         Layout.preferredWidth: 220
@@ -378,7 +380,7 @@ Item {
                         }
                     }
 
-                    Label { text: qsTr("Sensor") }
+                    Label { text: trText("Sensor") }
                     ComboBox {
                         id: sensorCombo
                         Layout.preferredWidth: 260

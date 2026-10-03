@@ -4,6 +4,8 @@ import QtQuick.Layouts
 import "../controls"
 
 Item {
+    function trText(key) { return typeof I18n === "undefined" ? key : I18n.translate(key, I18n.language) }
+
     property var sensorModel
 
     GridView {
@@ -31,6 +33,6 @@ Item {
         wrapMode: Text.WordWrap
         opacity: 0.7
         visible: sensorGrid.count === 0
-        text: qsTr("No temperature sensors with readable values found.")
+        text: trText("No temperature sensors with readable values found.")
     }
 }

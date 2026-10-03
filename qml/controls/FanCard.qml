@@ -5,6 +5,8 @@ import QtQuick.Layouts
 Rectangle {
     id: root
 
+    function trText(key) { return typeof I18n === "undefined" ? key : I18n.translate(key, I18n.language) }
+
     property string fanId
     property string name
     property int rpm
@@ -69,7 +71,7 @@ Rectangle {
             Layout.fillWidth: true
 
             Label {
-                text: root.systemAutoMode ? qsTr("System Auto") : (root.curveMode ? qsTr("Auto") : qsTr("Manual"))
+                text: root.systemAutoMode ? trText("System Auto") : (root.curveMode ? trText("Auto") : trText("Manual"))
                 opacity: 0.8
             }
 
@@ -108,7 +110,7 @@ Rectangle {
             spacing: 8
 
             Button {
-                text: qsTr("Manual")
+                text: trText("Manual")
                 bottomPadding: 5
                 topPadding: 5
                 enabled: root.supportsControl && (root.curveMode || root.systemAutoMode)
@@ -118,7 +120,7 @@ Rectangle {
             }
 
             Button {
-                text: qsTr("Auto")
+                text: trText("Auto")
                 bottomPadding: 5
                 topPadding: 5
                 enabled: root.supportsControl && !root.curveMode
@@ -128,7 +130,7 @@ Rectangle {
             }
 
             Button {
-                text: qsTr("System Auto")
+                text: trText("System Auto")
                 bottomPadding: 5
                 topPadding: 5
                 enabled: root.supportsFirmwareControl && !root.systemAutoMode

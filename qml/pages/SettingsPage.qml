@@ -3,6 +3,8 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 Item {
+    function trText(key) { return typeof I18n === "undefined" ? key : I18n.translate(key, I18n.language) }
+
     property var fanModel
     property var sensorModel
     property var fanController
@@ -12,7 +14,7 @@ Item {
         spacing: 16
 
         GroupBox {
-            title: qsTr("About")
+            title: trText("About")
             Layout.fillWidth: true
 
             ColumnLayout {
@@ -23,12 +25,12 @@ Item {
                     Layout.fillWidth: true
 
                     Label {
-                        text: qsTr("Software version")
+                        text: trText("Software version")
                         Layout.fillWidth: true
                     }
 
                     Label {
-                        text: AppVersion && AppVersion.length > 0 ? AppVersion : qsTr("Unknown")
+                        text: AppVersion && AppVersion.length > 0 ? AppVersion : trText("Unknown")
                         opacity: 0.8
                     }
                 }
@@ -36,7 +38,7 @@ Item {
         }
 
         GroupBox {
-            title: qsTr("Safety")
+            title: trText("Safety")
             Layout.fillWidth: true
 
             ColumnLayout {
@@ -46,7 +48,7 @@ Item {
                 RowLayout {
                     Layout.fillWidth: true
                     Label {
-                        text: qsTr("Emergency")
+                        text: trText("Emergency")
                         Layout.fillWidth: true
                     }
                     SpinBox {
@@ -61,7 +63,7 @@ Item {
                 RowLayout {
                     Layout.fillWidth: true
                     Label {
-                        text: qsTr("Minimum")
+                        text: trText("Minimum")
                         Layout.fillWidth: true
                     }
                     SpinBox {
@@ -76,7 +78,7 @@ Item {
         }
 
         GroupBox {
-            title: qsTr("Sensors")
+            title: trText("Sensors")
             Layout.fillWidth: true
 
             ColumnLayout {
@@ -87,7 +89,7 @@ Item {
                     Layout.fillWidth: true
 
                     Label {
-                        text: qsTr("Update interval")
+                        text: trText("Update interval")
                         Layout.fillWidth: true
                     }
 
@@ -113,7 +115,7 @@ Item {
                     Layout.fillWidth: true
                     opacity: 0.65
                     wrapMode: Text.WordWrap
-                    text: qsTr("Only temperature sensors with readable values are shown.")
+                    text: trText("Only temperature sensors with readable values are shown.")
                 }
 
 

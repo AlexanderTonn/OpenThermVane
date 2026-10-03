@@ -5,6 +5,8 @@ import QtQuick.Shapes
 Item {
     id: root
 
+    function trText(key) { return typeof I18n === "undefined" ? key : I18n.translate(key, I18n.language) }
+
     property var curveModel
     property var fanModel
     property var sensorModel
@@ -175,7 +177,7 @@ Item {
     function updateActiveFan() {
         const fan = selectedFan()
         activeFanAvailable = fan.fanId !== undefined || root.activeFanSpeedOverride >= 0
-        activeFanName = fan.name !== undefined && fan.name !== "" ? fan.name : qsTr("Fan")
+        activeFanName = fan.name !== undefined && fan.name !== "" ? fan.name : trText("Fan")
         activeFanSpeed = root.activeFanSpeedOverride >= 0
             ? root.activeFanSpeedOverride
             : (fan.speedPercent !== undefined ? fan.speedPercent : 0)
@@ -211,7 +213,7 @@ Item {
     }
 
     function pointLabel() {
-        const temperatureText = activeTemperature > 0 ? Math.round(pointTemperature()) + " C" : qsTr("no sensor")
+        const temperatureText = activeTemperature > 0 ? Math.round(pointTemperature()) + " C" : trText("no sensor")
         const speedText = Math.round(pointSpeed()) + "%"
         return temperatureText + " / " + speedText
     }

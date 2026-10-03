@@ -171,6 +171,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("FanCurveModel"), application.fanCurveModel());
     engine.rootContext()->setContextProperty(QStringLiteral("FanController"), application.fanController());
     engine.rootContext()->setContextProperty(QStringLiteral("LanguageManager"), &languageManager);
+    engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &languageManager);
     engine.rootContext()->setContextProperty(QStringLiteral("AppVersion"), QApplication::applicationVersion());
 
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app, [] {
@@ -188,11 +189,17 @@ int main(int argc, char *argv[])
     }
 
     QMenu trayMenu;
-    QAction showAction(QObject::tr("Show ThermVane"), &trayMenu);
-    QAction quitAction(QObject::tr("Quit"), &trayMenu);
+    QAction showAction(&trayMenu);
+    QAction quitAction(&trayMenu);
     trayMenu.addAction(&showAction);
     trayMenu.addSeparator();
     trayMenu.addAction(&quitAction);
+    const auto updateTrayTexts = [&languageManager, &showAction, &quitAction] {
+        showAction.setText(languageManager.translate(QStringLiteral("Show ThermVane")));
+        quitAction.setText(languageManager.translate(QStringLiteral("Quit")));
+    };
+    updateTrayTexts();
+    QObject::connect(&languageManager, &thermvane::LanguageManager::languageChanged, &app, updateTrayTexts);
 
     QSystemTrayIcon trayIcon;
     if (QSystemTrayIcon::isSystemTrayAvailable() && !appIcon.isNull()) {

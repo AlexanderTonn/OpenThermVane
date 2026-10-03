@@ -4,6 +4,8 @@ import QtQuick.Layouts
 import "../controls"
 
 Item {
+    function trText(key) { return typeof I18n === "undefined" ? key : I18n.translate(key, I18n.language) }
+
     property var fanModel
     property var sensorModel
 
@@ -14,7 +16,7 @@ Item {
         rowSpacing: 14
 
         GroupBox {
-            title: qsTr("Temperature")
+            title: trText("Temperature")
             Layout.fillWidth: true
             Layout.fillHeight: true
 
@@ -43,12 +45,12 @@ Item {
                 wrapMode: Text.WordWrap
                 opacity: 0.7
                 visible: dashboardSensorGrid.count === 0
-                text: qsTr("No readable temperature values.")
+                text: trText("No readable temperature values.")
             }
         }
 
         GroupBox {
-            title: qsTr("Fans")
+            title: trText("Fans")
             Layout.fillWidth: true
             Layout.fillHeight: true
 

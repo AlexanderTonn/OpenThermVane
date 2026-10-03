@@ -7,6 +7,16 @@ import "pages"
 ApplicationWindow {
     id: window
 
+    function trText(key) { return typeof I18n === "undefined" ? key : I18n.translate(key, I18n.language) }
+    function languageIndex(language) {
+        const languages = window.languageManager.languages || []
+        for (let i = 0; i < languages.length; ++i) {
+            if (languages[i].code === language)
+                return i
+        }
+        return 0
+    }
+
     property var fanModel: typeof FanModel === "undefined" ? designFanModel : FanModel
     property var sensorModel: typeof SensorModel === "undefined" ? designSensorModel : SensorModel
     property var fanCurveModel: typeof FanCurveModel === "undefined" ? designFanCurveModel : FanCurveModel
@@ -40,9 +50,17 @@ ApplicationWindow {
 
             ComboBox {
                 id: languageBox
-                model: ["en", "de"]
-                currentIndex: window.languageManager.language === "de" ? 1 : 0
-                onActivated: window.languageManager.setLanguage(currentText)
+                Layout.preferredWidth: 72
+                model: window.languageManager.languages
+                textRole: "flag"
+                valueRole: "code"
+                currentIndex: window.languageIndex(window.languageManager.language)
+                font.pixelSize: 22
+                onActivated: function(index) {
+                    const languages = window.languageManager.languages || []
+                    if (index >= 0 && index < languages.length)
+                        window.languageManager.setLanguage(languages[index].code)
+                }
             }
 
         }
@@ -57,10 +75,10 @@ ApplicationWindow {
             id: tabs
             Layout.fillWidth: true
 
-            TabButton { text: qsTr("Dashboard") }
-            TabButton { text: qsTr("Fans") }
-            TabButton { text: qsTr("Sensors") }
-            TabButton { text: qsTr("Settings") }
+            TabButton { text: trText("Dashboard") }
+            TabButton { text: trText("Fans") }
+            TabButton { text: trText("Sensors") }
+            TabButton { text: trText("Settings") }
         }
 
         StackLayout {
@@ -122,6 +140,10 @@ ApplicationWindow {
     QtObject {
         id: designLanguageManager
         property string language: "en"
+        property var languages: [
+            { "code": "en", "flag": "🇬🇧", "name": "English" },
+            { "code": "de", "flag": "🇩🇪", "name": "Deutsch" }
+        ]
         function setLanguage(value) { language = value }
     }
 }
