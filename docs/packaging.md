@@ -10,38 +10,32 @@ NBFC is included as a Git submodule:
 git submodule update --init --recursive
 ```
 
-## macOS: build ThermVane QtIFW installer
+## macOS: build native DMG installer
 
-Build a macOS offline installer with:
+Build a macOS `.dmg` with a native `.pkg` installer:
 
 ```bash
-./scripts/package-ifw-installer-macos.sh
+./scripts/package-macos-dmg.sh
 ```
 
 The script uses these defaults:
 
 - Qt: `/Volumes/AlexMacSSD/Qt/6.12.0/macos`
-- Qt Installer Framework: `/Volumes/AlexMacSSD/Qt/Tools/QtInstallerFramework/4.11`
 - Build directory: `build/Qt_6_12_0_for_macOS_Release`
 
 Override them when needed:
 
 ```bash
 QT_ROOT="/path/to/Qt/6.x/macos" \
-IFW_ROOT="/path/to/QtInstallerFramework/4.x" \
 BUILD_DIR="build/macos-release" \
-./scripts/package-ifw-installer-macos.sh
+./scripts/package-macos-dmg.sh
 ```
 
-The output is written to `<build-dir>/ifw/ThermVaneInstaller.app`.
+The output is written to `<build-dir>/macos-dmg/ThermVaneInstaller.dmg`.
 
-The macOS installer contains:
+The DMG contains `ThermVane.pkg`. The package installs `ThermVane.app` directly to `/Applications` and runs a root `postinstall` script to install `ThermVaneFanHelper` into `/Library/PrivilegedHelperTools/ThermVaneFanHelper` and register `/Library/LaunchDaemons/com.openthermvane.fanhelper.plist`.
 
-- `ThermVane.app`, deployed with `macdeployqt`.
-- `ThermVaneFanHelper`.
-- macOS helper install/uninstall scripts.
-
-During installation, the app component runs the helper installation elevated once. It installs the helper to `/Library/PrivilegedHelperTools/ThermVaneFanHelper` and registers the LaunchDaemon `/Library/LaunchDaemons/com.openthermvane.fanhelper.plist`. During uninstall, the LaunchDaemon and helper are removed.
+The old QtIFW macOS installer is no longer used for release builds because it installs into an application folder and can show QtIFW maintenance package warnings on macOS. Windows and Linux still use QtIFW.
 
 ## Linux: build NBFC from source
 
@@ -90,11 +84,11 @@ During installation, the NBFC component runs the payload elevated and silently:
 
 ## GitHub Actions: installer builds
 
-The workflow `.github/workflows/installer-builds.yml` builds QtIFW installers for macOS, Windows and Linux. It runs on pull requests, pushes to `main`, version tags and manual `workflow_dispatch` runs.
+The workflow `.github/workflows/installer-builds.yml` builds a native DMG installer for macOS and QtIFW installers for Windows and Linux. It runs on pull requests, pushes to `main`, version tags and manual `workflow_dispatch` runs.
 
-Each job installs Qt and Qt Installer Framework with `aqtinstall`, configures CMake in Release mode, builds the `package_ifw` target and uploads the generated installer as an artifact:
+The macOS job installs Qt with `aqtinstall`, builds the `package_macos_dmg` target and uploads the generated DMG. The Windows and Linux jobs install Qt plus Qt Installer Framework, build `package_ifw` and upload their installers as artifacts:
 
-- macOS: `ThermVaneInstaller.app`
+- macOS: `ThermVaneInstaller.dmg`
 - Windows: `ThermVaneInstaller.exe`
 - Linux: `ThermVaneInstaller`
 
@@ -103,7 +97,7 @@ The workflow uses these shared variables at the top of the YAML file:
 - `QT_VERSION`: Qt version used on all runners.
 - `IFW_TOOL_ID`: Qt Installer Framework package id used by `aqtinstall`.
 
-Windows CI omits the optional NBFC component unless `THERMVANE_NBFC_INSTALLER` points to a `.msi` or `.exe` payload during packaging. macOS CI includes the fan helper and helper install scripts in the installer. Linux CI copies the Qt runtime libraries, Qt plugins and QML imports from the installed Qt kit into the IFW package.
+Windows CI omits the optional NBFC component unless `THERMVANE_NBFC_INSTALLER` points to a `.msi` or `.exe` payload during packaging. macOS CI builds a DMG containing a native pkg that installs the app and fan helper. Linux CI copies the Qt runtime libraries, Qt plugins and QML imports from the installed Qt kit into the IFW package.
 
 ## CMake QtIFW target
 
@@ -118,6 +112,6 @@ cmake -S . -B <build-dir> `
 cmake --build <build-dir> --target package_ifw --config Release
 ```
 
-On macOS, set `THERMVANE_QT_ROOT` to the Qt macOS kit root and `THERMVANE_IFW_BINARYCREATOR` to the `binarycreator` executable.
+On macOS, use the `package_macos_dmg` target instead of `package_ifw`. Set `THERMVANE_QT_ROOT` to the Qt macOS kit root.
 
-The output is written to `<build-dir>/ifw/ThermVaneInstaller.app` on macOS, `<build-dir>/ifw/ThermVaneInstaller.exe` on Windows and `<build-dir>/ifw/ThermVaneInstaller` on Linux.
+The output is written to `<build-dir>/macos-dmg/ThermVaneInstaller.dmg` on macOS, `<build-dir>/ifw/ThermVaneInstaller.exe` on Windows and `<build-dir>/ifw/ThermVaneInstaller` on Linux.

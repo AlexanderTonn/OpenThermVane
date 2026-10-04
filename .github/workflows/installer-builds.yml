@@ -32,7 +32,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install Qt and Qt Installer Framework
+      - name: Install Qt
         shell: bash
         run: |
           set -euo pipefail
@@ -42,13 +42,6 @@ jobs:
           aqt_python="${aqt_venv}/bin/python"
           "${aqt_python}" -m pip install --upgrade pip aqtinstall
           "${aqt_python}" -m aqt install-qt -b "${AQT_BASE_URL}" "${QT_HOST}" desktop "${QT_VERSION}" "${QT_ARCH}" -O "${qt_install_dir}"
-          "${aqt_python}" -m aqt install-tool -b "${AQT_BASE_URL}" "${QT_HOST}" desktop tools_ifw "${IFW_TOOL_ID}" -O "${qt_install_dir}"
-          binarycreator="$(find "${qt_install_dir}/Tools" -type f -name binarycreator | head -n 1)"
-          if [[ -z "${binarycreator}" ]]; then
-            echo "binarycreator was not installed" >&2
-            exit 1
-          fi
-          echo "BINARYCREATOR=${binarycreator}" >> "${GITHUB_ENV}"
           echo "QT_ROOT=${qt_install_dir}/${QT_VERSION}/macos" >> "${GITHUB_ENV}"
           echo "BUILD_DIR=${GITHUB_WORKSPACE}/build/ci-macos-release" >> "${GITHUB_ENV}"
 
@@ -58,18 +51,17 @@ jobs:
           cmake -S . -B "${BUILD_DIR}" \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="${QT_ROOT}" \
-            -DTHERMVANE_QT_ROOT="${QT_ROOT}" \
-            -DTHERMVANE_IFW_BINARYCREATOR="${BINARYCREATOR}"
+            -DTHERMVANE_QT_ROOT="${QT_ROOT}"
 
       - name: Build installer
         shell: bash
-        run: cmake --build "${BUILD_DIR}" --target package_ifw --config Release --parallel
+        run: cmake --build "${BUILD_DIR}" --target package_macos_dmg --config Release --parallel
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
           name: ThermVaneInstaller-macos
-          path: ${{ github.workspace }}/build/ci-macos-release/ifw/ThermVaneInstaller.app
+          path: ${{ github.workspace }}/build/ci-macos-release/macos-dmg/ThermVaneInstaller.dmg
           if-no-files-found: error
 
   windows:
@@ -109,6 +101,18 @@ jobs:
           "QT_ROOT=$qtInstallDir\$env:QT_VERSION\msvc2022_64" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "BUILD_DIR=$env:GITHUB_WORKSPACE\build\ci-windows-release" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
+      - name: Install Vulkan SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          choco install vulkan-sdk --no-progress -y
+          $vulkanSdk = Get-ChildItem -Path "C:\VulkanSDK" -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $vulkanSdk) {
+            Write-Error "Vulkan SDK was not installed to C:\VulkanSDK"
+          }
+          "VULKAN_SDK=$($vulkanSdk.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "Vulkan_INCLUDE_DIR=$($vulkanSdk.FullName)\Include" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Configure
         shell: pwsh
         run: |
@@ -117,7 +121,8 @@ jobs:
             -A x64 `
             -DCMAKE_PREFIX_PATH="$env:QT_ROOT" `
             -DTHERMVANE_QT_ROOT="$env:QT_ROOT" `
-            -DTHERMVANE_IFW_BINARYCREATOR="$env:BINARYCREATOR"
+            -DTHERMVANE_IFW_BINARYCREATOR="$env:BINARYCREATOR" `
+            -DVulkan_INCLUDE_DIR="$env:Vulkan_INCLUDE_DIR"
 
       - name: Build installer
         shell: pwsh

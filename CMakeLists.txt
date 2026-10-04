@@ -96,8 +96,10 @@ set(THERMVANE_PROJECT_FILES
     installer/packages/org.openthermvane.nbfc/meta/installscript.qs
     scripts/build-ifw-installer.ps1
     scripts/build-nbfc-linux.sh
+    scripts/package-macos-dmg.sh
     cmake/BuildIfwInstaller.cmake
     cmake/PackageIfw.cmake
+    cmake/PackageMacDmg.cmake
 )
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES

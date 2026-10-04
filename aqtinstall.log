@@ -1,0 +1,250 @@
+2026-10-03 17:38:17,580 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/tools_ifw/Updates.xml.sha256
+2026-10-03 17:38:18,150 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_ifw/Updates.xml.sha256
+2026-10-03 17:38:18,679 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/tools_ifw/Updates.xml.sha256
+2026-10-03 17:41:19,140 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_683/qt6_683/Updates.xml.sha256
+2026-10-03 17:41:19,767 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_692/qt6_692/Updates.xml.sha256
+2026-10-03 17:41:20,315 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_6100/qt6_6100/Updates.xml.sha256
+2026-10-03 17:41:20,985 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_6120/qt6_6120/Updates.xml.sha256
+2026-10-03 17:41:21,166 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_6120/qt6_6120/Updates.xml.sha256
+2026-10-03 17:41:21,327 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_6120/qt6_6120/Updates.xml.sha256
+2026-10-03 17:41:21,495 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_6120/qt6_6120/Updates.xml.sha256
+2026-10-03 17:41:21,769 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_6120/qt6_6120/Updates.xml.sha256
+2026-10-03 17:41:21,936 - aqt.main - ERROR - installer 8255684480 Failed to download checksum for the file 'Updates.xml' from mirrors '['https://download.qt.io']
+==============================Suggested follow-up:==============================
+* Check your internet connection
+* Consider modifying `requests.max_retries_to_retrieve_hash` in settings.ini
+* Consider modifying `mirrors.trusted_mirrors` in settings.ini (see https://aqtinstall.readthedocs.io/en/stable/configuration.html#configuration)
+* Please use 'aqt list-qt windows desktop' to show versions of Qt available.
+2026-10-03 17:42:24,343 - aqt.main - INFO - installer 8255684480 aqtinstall(aqt) v3.3.0 on Python 3.9.6 [CPython Clang 21.0.0 (clang-2100.1.1.101)]
+2026-10-03 17:42:24,343 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/tools_ifw/Updates.xml.sha256
+2026-10-03 17:42:24,690 - aqt.installer - INFO - installer 8255684480 DRY RUN: Would download and install the following:
+2026-10-03 17:42:24,690 - aqt.installer - INFO - installer 8255684480   - qt.tools.ifw.47: online/qtsdkrepository/linux_x64/desktop/tools_ifw/qt.tools.ifw.47/4.7.0-0-202402150941ifw-linux-x64.7z
+2026-10-03 17:42:24,690 - aqt.installer - INFO - installer 8255684480 Total packages: 1
+2026-10-03 17:42:24,690 - aqt.main - INFO - installer 8255684480 Finished installation
+2026-10-03 17:42:24,690 - aqt.main - INFO - installer 8255684480 Time elapsed: 0.34768075 second
+2026-10-03 17:42:24,853 - aqt.main - INFO - installer 8255684480 aqtinstall(aqt) v3.3.0 on Python 3.9.6 [CPython Clang 21.0.0 (clang-2100.1.1.101)]
+2026-10-03 17:42:24,853 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_ifw/Updates.xml.sha256
+2026-10-03 17:42:25,200 - aqt.installer - INFO - installer 8255684480 DRY RUN: Would download and install the following:
+2026-10-03 17:42:25,201 - aqt.installer - INFO - installer 8255684480   - qt.tools.ifw.47: online/qtsdkrepository/windows_x86/desktop/tools_ifw/qt.tools.ifw.47/4.7.0-0-202402150941ifw-win-x86.7z
+2026-10-03 17:42:25,201 - aqt.installer - INFO - installer 8255684480 Total packages: 1
+2026-10-03 17:42:25,201 - aqt.main - INFO - installer 8255684480 Finished installation
+2026-10-03 17:42:25,201 - aqt.main - INFO - installer 8255684480 Time elapsed: 0.34835138 second
+2026-10-03 17:42:25,366 - aqt.main - INFO - installer 8255684480 aqtinstall(aqt) v3.3.0 on Python 3.9.6 [CPython Clang 21.0.0 (clang-2100.1.1.101)]
+2026-10-03 17:42:25,366 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/tools_ifw/Updates.xml.sha256
+2026-10-03 17:42:25,713 - aqt.installer - INFO - installer 8255684480 DRY RUN: Would download and install the following:
+2026-10-03 17:42:25,713 - aqt.installer - INFO - installer 8255684480   - qt.tools.ifw.47: online/qtsdkrepository/mac_x64/desktop/tools_ifw/qt.tools.ifw.47/4.7.0-0-202402150941ifw-mac-x64.7z
+2026-10-03 17:42:25,713 - aqt.installer - INFO - installer 8255684480 Total packages: 1
+2026-10-03 17:42:25,713 - aqt.main - INFO - installer 8255684480 Finished installation
+2026-10-03 17:42:25,713 - aqt.main - INFO - installer 8255684480 Time elapsed: 0.34756625 second
+2026-10-03 17:42:25,866 - aqt.main - INFO - installer 8255684480 aqtinstall(aqt) v3.3.0 on Python 3.9.6 [CPython Clang 21.0.0 (clang-2100.1.1.101)]
+2026-10-03 17:42:25,866 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_6120/qt6_6120/Updates.xml.sha256
+2026-10-03 17:42:26,033 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_6120/qt6_6120/Updates.xml.sha256
+2026-10-03 17:42:26,321 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_6120/qt6_6120/Updates.xml.sha256
+2026-10-03 17:42:26,503 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_6120/qt6_6120/Updates.xml.sha256
+2026-10-03 17:42:26,673 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_6120/qt6_6120/Updates.xml.sha256
+2026-10-03 17:42:26,840 - aqt.archives - WARNING - archives 8255684480 Failed to download checksum for the file 'online/qtsdkrepository/windows_x86/desktop/qt6_6120/qt6_6120/Updates.xml'. This may happen on unofficial mirrors.
+2026-10-03 17:42:27,115 - aqt.main - ERROR - installer 8255684480 Failed to locate XML data for Qt version '6.12.0'.
+==============================Suggested follow-up:==============================
+* Please use 'aqt list-qt windows desktop' to show versions available.
+2026-10-03 17:44:36,548 - aqt.main - INFO - installer 8255684480 aqtinstall(aqt) v3.3.0 on Python 3.9.6 [CPython Clang 21.0.0 (clang-2100.1.1.101)]
+2026-10-03 17:44:36,549 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_6100/qt6_6100/Updates.xml.sha256
+2026-10-03 17:44:37,143 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/extensions/qtwebengine/6100/msvc2022_64/Updates.xml.sha256
+2026-10-03 17:44:37,568 - aqt.archives - INFO - archives 8255684480 Found extension qtwebengine
+2026-10-03 17:44:37,568 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/extensions/qtpdf/6100/msvc2022_64/Updates.xml.sha256
+2026-10-03 17:44:38,071 - aqt.archives - INFO - archives 8255684480 Found extension qtpdf
+2026-10-03 17:44:38,087 - aqt.installer - INFO - installer 8255684480 DRY RUN: Would download and install the following:
+2026-10-03 17:44:38,088 - aqt.installer - INFO - installer 8255684480   - qtbase: online/qtsdkrepository/windows_x86/desktop/qt6_6100/qt6_6100/qt.qt6.6100.win64_msvc2022_64/6.10.0-0-202510021201qtbase-Windows-Windows_11_24H2-MSVC2022-Windows-Windows_11_24H2-X86_64.7z -> 6.10.0/msvc2022_64
+2026-10-03 17:44:38,088 - aqt.installer - INFO - installer 8255684480   - qtsvg: online/qtsdkrepository/windows_x86/desktop/qt6_6100/qt6_6100/qt.qt6.6100.win64_msvc2022_64/6.10.0-0-202510021201qtsvg-Windows-Windows_11_24H2-MSVC2022-Windows-Windows_11_24H2-X86_64.7z -> 6.10.0/msvc2022_64
+2026-10-03 17:44:38,088 - aqt.installer - INFO - installer 8255684480   - qtdeclarative: online/qtsdkrepository/windows_x86/desktop/qt6_6100/qt6_6100/qt.qt6.6100.win64_msvc2022_64/6.10.0-0-202510021201qtdeclarative-Windows-Windows_11_24H2-MSVC2022-Windows-Windows_11_24H2-X86_64.7z -> 6.10.0/msvc2022_64
+2026-10-03 17:44:38,088 - aqt.installer - INFO - installer 8255684480   - qttools: online/qtsdkrepository/windows_x86/desktop/qt6_6100/qt6_6100/qt.qt6.6100.win64_msvc2022_64/6.10.0-0-202510021201qttools-Windows-Windows_11_24H2-MSVC2022-Windows-Windows_11_24H2-X86_64.7z -> 6.10.0/msvc2022_64
+2026-10-03 17:44:38,088 - aqt.installer - INFO - installer 8255684480   - qttranslations: online/qtsdkrepository/windows_x86/desktop/qt6_6100/qt6_6100/qt.qt6.6100.win64_msvc2022_64/6.10.0-0-202510021201qttranslations-Windows-Windows_11_24H2-MSVC2022-Windows-Windows_11_24H2-X86_64.7z -> 6.10.0/msvc2022_64
+2026-10-03 17:44:38,088 - aqt.installer - INFO - installer 8255684480   - d3dcompiler_47: online/qtsdkrepository/windows_x86/desktop/qt6_6100/qt6_6100/qt.qt6.6100.win64_msvc2022_64/6.10.0-0-202510021201d3dcompiler_47-x64.7z -> 6.10.0/msvc2022_64/bin
+2026-10-03 17:44:38,088 - aqt.installer - INFO - installer 8255684480   - opengl32sw: online/qtsdkrepository/windows_x86/desktop/qt6_6100/qt6_6100/qt.qt6.6100.win64_msvc2022_64/6.10.0-0-202510021201opengl32sw-64-mesa_11_2_2-signed_sha256.7z -> 6.10.0/msvc2022_64/bin
+2026-10-03 17:44:38,088 - aqt.installer - INFO - installer 8255684480 Total packages: 7
+2026-10-03 17:44:38,249 - aqt.main - INFO - installer 8255684480 aqtinstall(aqt) v3.3.0 on Python 3.9.6 [CPython Clang 21.0.0 (clang-2100.1.1.101)]
+2026-10-03 17:44:38,250 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_6100/qt6_6100/Updates.xml.sha256
+2026-10-03 17:44:38,680 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/extensions/qtwebengine/6100/x86_64/Updates.xml.sha256
+2026-10-03 17:44:39,200 - aqt.archives - INFO - archives 8255684480 Found extension qtwebengine
+2026-10-03 17:44:39,200 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/extensions/qtpdf/6100/x86_64/Updates.xml.sha256
+2026-10-03 17:44:39,606 - aqt.archives - INFO - archives 8255684480 Found extension qtpdf
+2026-10-03 17:44:39,612 - aqt.installer - INFO - installer 8255684480 DRY RUN: Would download and install the following:
+2026-10-03 17:44:39,613 - aqt.installer - INFO - installer 8255684480   - qtbase: online/qtsdkrepository/linux_x64/desktop/qt6_6100/qt6_6100/qt.qt6.6100.linux_gcc_64/6.10.0-0-202510021201qtbase-Linux-RHEL_9_4-GCC-Linux-RHEL_9_4-X86_64.7z -> 6.10.0/gcc_64
+2026-10-03 17:44:39,613 - aqt.installer - INFO - installer 8255684480   - qtsvg: online/qtsdkrepository/linux_x64/desktop/qt6_6100/qt6_6100/qt.qt6.6100.linux_gcc_64/6.10.0-0-202510021201qtsvg-Linux-RHEL_9_4-GCC-Linux-RHEL_9_4-X86_64.7z -> 6.10.0/gcc_64
+2026-10-03 17:44:39,613 - aqt.installer - INFO - installer 8255684480   - qtdeclarative: online/qtsdkrepository/linux_x64/desktop/qt6_6100/qt6_6100/qt.qt6.6100.linux_gcc_64/6.10.0-0-202510021201qtdeclarative-Linux-RHEL_9_4-GCC-Linux-RHEL_9_4-X86_64.7z -> 6.10.0/gcc_64
+2026-10-03 17:44:39,613 - aqt.installer - INFO - installer 8255684480   - qttools: online/qtsdkrepository/linux_x64/desktop/qt6_6100/qt6_6100/qt.qt6.6100.linux_gcc_64/6.10.0-0-202510021201qttools-Linux-RHEL_9_4-GCC-Linux-RHEL_9_4-X86_64.7z -> 6.10.0/gcc_64
+2026-10-03 17:44:39,613 - aqt.installer - INFO - installer 8255684480   - qttranslations: online/qtsdkrepository/linux_x64/desktop/qt6_6100/qt6_6100/qt.qt6.6100.linux_gcc_64/6.10.0-0-202510021201qttranslations-Linux-RHEL_9_4-GCC-Linux-RHEL_9_4-X86_64.7z -> 6.10.0/gcc_64
+2026-10-03 17:44:39,613 - aqt.installer - INFO - installer 8255684480   - qtwayland: online/qtsdkrepository/linux_x64/desktop/qt6_6100/qt6_6100/qt.qt6.6100.linux_gcc_64/6.10.0-0-202510021201qtwayland-Linux-RHEL_9_4-GCC-Linux-RHEL_9_4-X86_64.7z -> 6.10.0/gcc_64
+2026-10-03 17:44:39,613 - aqt.installer - INFO - installer 8255684480   - icu: online/qtsdkrepository/linux_x64/desktop/qt6_6100/qt6_6100/qt.qt6.6100.linux_gcc_64/6.10.0-0-202510021201icu-linux-Rhel8.6-x86_64.7z -> 6.10.0/gcc_64/lib
+2026-10-03 17:44:39,613 - aqt.installer - INFO - installer 8255684480 Total packages: 7
+2026-10-03 17:44:39,772 - aqt.main - INFO - installer 8255684480 aqtinstall(aqt) v3.3.0 on Python 3.9.6 [CPython Clang 21.0.0 (clang-2100.1.1.101)]
+2026-10-03 17:44:39,772 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_6100/qt6_6100/Updates.xml.sha256
+2026-10-03 17:44:40,379 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/extensions/qtwebengine/6100/clang_64/Updates.xml.sha256
+2026-10-03 17:44:40,779 - aqt.archives - INFO - archives 8255684480 Found extension qtwebengine
+2026-10-03 17:44:40,779 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/extensions/qtpdf/6100/clang_64/Updates.xml.sha256
+2026-10-03 17:44:41,378 - aqt.archives - INFO - archives 8255684480 Found extension qtpdf
+2026-10-03 17:44:41,388 - aqt.installer - INFO - installer 8255684480 DRY RUN: Would download and install the following:
+2026-10-03 17:44:41,388 - aqt.installer - INFO - installer 8255684480   - qtbase: online/qtsdkrepository/mac_x64/desktop/qt6_6100/qt6_6100/qt.qt6.6100.clang_64/6.10.0-0-202510021200qtbase-MacOS-MacOS_15-Clang-MacOS-MacOS_15-X86_64-ARM64.7z -> 6.10.0/macos
+2026-10-03 17:44:41,388 - aqt.installer - INFO - installer 8255684480   - qtdeclarative: online/qtsdkrepository/mac_x64/desktop/qt6_6100/qt6_6100/qt.qt6.6100.clang_64/6.10.0-0-202510021200qtdeclarative-MacOS-MacOS_15-Clang-MacOS-MacOS_15-X86_64-ARM64.7z -> 6.10.0/macos
+2026-10-03 17:44:41,388 - aqt.installer - INFO - installer 8255684480   - qtsvg: online/qtsdkrepository/mac_x64/desktop/qt6_6100/qt6_6100/qt.qt6.6100.clang_64/6.10.0-0-202510021200qtsvg-MacOS-MacOS_15-Clang-MacOS-MacOS_15-X86_64-ARM64.7z -> 6.10.0/macos
+2026-10-03 17:44:41,388 - aqt.installer - INFO - installer 8255684480   - qttools: online/qtsdkrepository/mac_x64/desktop/qt6_6100/qt6_6100/qt.qt6.6100.clang_64/6.10.0-0-202510021200qttools-MacOS-MacOS_15-Clang-MacOS-MacOS_15-X86_64-ARM64.7z -> 6.10.0/macos
+2026-10-03 17:44:41,388 - aqt.installer - INFO - installer 8255684480   - qttranslations: online/qtsdkrepository/mac_x64/desktop/qt6_6100/qt6_6100/qt.qt6.6100.clang_64/6.10.0-0-202510021200qttranslations-MacOS-MacOS_15-Clang-MacOS-MacOS_15-X86_64-ARM64.7z -> 6.10.0/macos
+2026-10-03 17:44:41,388 - aqt.installer - INFO - installer 8255684480 Total packages: 5
+2026-10-03 17:44:41,556 - aqt.main - INFO - installer 8255684480 aqtinstall(aqt) v3.3.0 on Python 3.9.6 [CPython Clang 21.0.0 (clang-2100.1.1.101)]
+2026-10-03 17:44:41,556 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_693/qt6_693/Updates.xml.sha256
+2026-10-03 17:44:42,086 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/extensions/qtwebengine/693/msvc2022_64/Updates.xml.sha256
+2026-10-03 17:44:42,574 - aqt.archives - INFO - archives 8255684480 Found extension qtwebengine
+2026-10-03 17:44:42,574 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/extensions/qtpdf/693/msvc2022_64/Updates.xml.sha256
+2026-10-03 17:44:42,955 - aqt.archives - INFO - archives 8255684480 Found extension qtpdf
+2026-10-03 17:44:42,972 - aqt.installer - INFO - installer 8255684480 DRY RUN: Would download and install the following:
+2026-10-03 17:44:42,972 - aqt.installer - INFO - installer 8255684480   - qtbase: online/qtsdkrepository/windows_x86/desktop/qt6_693/qt6_693/qt.qt6.693.win64_msvc2022_64/6.9.3-0-202509261208qtbase-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z -> 6.9.3/msvc2022_64
+2026-10-03 17:44:42,972 - aqt.installer - INFO - installer 8255684480   - qtsvg: online/qtsdkrepository/windows_x86/desktop/qt6_693/qt6_693/qt.qt6.693.win64_msvc2022_64/6.9.3-0-202509261208qtsvg-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z -> 6.9.3/msvc2022_64
+2026-10-03 17:44:42,972 - aqt.installer - INFO - installer 8255684480   - qtdeclarative: online/qtsdkrepository/windows_x86/desktop/qt6_693/qt6_693/qt.qt6.693.win64_msvc2022_64/6.9.3-0-202509261208qtdeclarative-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z -> 6.9.3/msvc2022_64
+2026-10-03 17:44:42,973 - aqt.installer - INFO - installer 8255684480   - qttools: online/qtsdkrepository/windows_x86/desktop/qt6_693/qt6_693/qt.qt6.693.win64_msvc2022_64/6.9.3-0-202509261208qttools-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z -> 6.9.3/msvc2022_64
+2026-10-03 17:44:42,973 - aqt.installer - INFO - installer 8255684480   - qttranslations: online/qtsdkrepository/windows_x86/desktop/qt6_693/qt6_693/qt.qt6.693.win64_msvc2022_64/6.9.3-0-202509261208qttranslations-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z -> 6.9.3/msvc2022_64
+2026-10-03 17:44:42,973 - aqt.installer - INFO - installer 8255684480   - d3dcompiler_47: online/qtsdkrepository/windows_x86/desktop/qt6_693/qt6_693/qt.qt6.693.win64_msvc2022_64/6.9.3-0-202509261208d3dcompiler_47-x64.7z -> 6.9.3/msvc2022_64/bin
+2026-10-03 17:44:42,973 - aqt.installer - INFO - installer 8255684480   - opengl32sw: online/qtsdkrepository/windows_x86/desktop/qt6_693/qt6_693/qt.qt6.693.win64_msvc2022_64/6.9.3-0-202509261208opengl32sw-64-mesa_11_2_2-signed_sha256.7z -> 6.9.3/msvc2022_64/bin
+2026-10-03 17:44:42,973 - aqt.installer - INFO - installer 8255684480 Total packages: 7
+2026-10-03 17:44:43,132 - aqt.main - INFO - installer 8255684480 aqtinstall(aqt) v3.3.0 on Python 3.9.6 [CPython Clang 21.0.0 (clang-2100.1.1.101)]
+2026-10-03 17:44:43,132 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_693/qt6_693/Updates.xml.sha256
+2026-10-03 17:44:43,528 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/extensions/qtwebengine/693/x86_64/Updates.xml.sha256
+2026-10-03 17:44:43,954 - aqt.archives - INFO - archives 8255684480 Found extension qtwebengine
+2026-10-03 17:44:43,955 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/extensions/qtpdf/693/x86_64/Updates.xml.sha256
+2026-10-03 17:44:44,343 - aqt.archives - INFO - archives 8255684480 Found extension qtpdf
+2026-10-03 17:44:44,350 - aqt.installer - INFO - installer 8255684480 DRY RUN: Would download and install the following:
+2026-10-03 17:44:44,350 - aqt.installer - INFO - installer 8255684480   - qtbase: online/qtsdkrepository/linux_x64/desktop/qt6_693/qt6_693/qt.qt6.693.linux_gcc_64/6.9.3-0-202509261207qtbase-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z -> 6.9.3/gcc_64
+2026-10-03 17:44:44,350 - aqt.installer - INFO - installer 8255684480   - qtsvg: online/qtsdkrepository/linux_x64/desktop/qt6_693/qt6_693/qt.qt6.693.linux_gcc_64/6.9.3-0-202509261207qtsvg-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z -> 6.9.3/gcc_64
+2026-10-03 17:44:44,350 - aqt.installer - INFO - installer 8255684480   - qtdeclarative: online/qtsdkrepository/linux_x64/desktop/qt6_693/qt6_693/qt.qt6.693.linux_gcc_64/6.9.3-0-202509261207qtdeclarative-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z -> 6.9.3/gcc_64
+2026-10-03 17:44:44,350 - aqt.installer - INFO - installer 8255684480   - qttools: online/qtsdkrepository/linux_x64/desktop/qt6_693/qt6_693/qt.qt6.693.linux_gcc_64/6.9.3-0-202509261207qttools-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z -> 6.9.3/gcc_64
+2026-10-03 17:44:44,350 - aqt.installer - INFO - installer 8255684480   - qttranslations: online/qtsdkrepository/linux_x64/desktop/qt6_693/qt6_693/qt.qt6.693.linux_gcc_64/6.9.3-0-202509261207qttranslations-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z -> 6.9.3/gcc_64
+2026-10-03 17:44:44,350 - aqt.installer - INFO - installer 8255684480   - qtwayland: online/qtsdkrepository/linux_x64/desktop/qt6_693/qt6_693/qt.qt6.693.linux_gcc_64/6.9.3-0-202509261207qtwayland-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z -> 6.9.3/gcc_64
+2026-10-03 17:44:44,350 - aqt.installer - INFO - installer 8255684480   - icu: online/qtsdkrepository/linux_x64/desktop/qt6_693/qt6_693/qt.qt6.693.linux_gcc_64/6.9.3-0-202509261207icu-linux-Rhel8.6-x86_64.7z -> 6.9.3/gcc_64/lib
+2026-10-03 17:44:44,350 - aqt.installer - INFO - installer 8255684480 Total packages: 7
+2026-10-03 17:44:44,501 - aqt.main - INFO - installer 8255684480 aqtinstall(aqt) v3.3.0 on Python 3.9.6 [CPython Clang 21.0.0 (clang-2100.1.1.101)]
+2026-10-03 17:44:44,501 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_693/qt6_693/Updates.xml.sha256
+2026-10-03 17:44:44,908 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/extensions/qtwebengine/693/clang_64/Updates.xml.sha256
+2026-10-03 17:44:45,341 - aqt.archives - INFO - archives 8255684480 Found extension qtwebengine
+2026-10-03 17:44:45,341 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/extensions/qtpdf/693/clang_64/Updates.xml.sha256
+2026-10-03 17:44:45,763 - aqt.archives - INFO - archives 8255684480 Found extension qtpdf
+2026-10-03 17:44:45,769 - aqt.installer - INFO - installer 8255684480 DRY RUN: Would download and install the following:
+2026-10-03 17:44:45,769 - aqt.installer - INFO - installer 8255684480   - qtbase: online/qtsdkrepository/mac_x64/desktop/qt6_693/qt6_693/qt.qt6.693.clang_64/6.9.3-0-202509261207qtbase-MacOS-MacOS_15-Clang-MacOS-MacOS_15-X86_64-ARM64.7z -> 6.9.3/macos
+2026-10-03 17:44:45,769 - aqt.installer - INFO - installer 8255684480   - qtdeclarative: online/qtsdkrepository/mac_x64/desktop/qt6_693/qt6_693/qt.qt6.693.clang_64/6.9.3-0-202509261207qtdeclarative-MacOS-MacOS_15-Clang-MacOS-MacOS_15-X86_64-ARM64.7z -> 6.9.3/macos
+2026-10-03 17:44:45,769 - aqt.installer - INFO - installer 8255684480   - qtsvg: online/qtsdkrepository/mac_x64/desktop/qt6_693/qt6_693/qt.qt6.693.clang_64/6.9.3-0-202509261207qtsvg-MacOS-MacOS_15-Clang-MacOS-MacOS_15-X86_64-ARM64.7z -> 6.9.3/macos
+2026-10-03 17:44:45,770 - aqt.installer - INFO - installer 8255684480   - qttools: online/qtsdkrepository/mac_x64/desktop/qt6_693/qt6_693/qt.qt6.693.clang_64/6.9.3-0-202509261207qttools-MacOS-MacOS_15-Clang-MacOS-MacOS_15-X86_64-ARM64.7z -> 6.9.3/macos
+2026-10-03 17:44:45,770 - aqt.installer - INFO - installer 8255684480   - qttranslations: online/qtsdkrepository/mac_x64/desktop/qt6_693/qt6_693/qt.qt6.693.clang_64/6.9.3-0-202509261207qttranslations-MacOS-MacOS_15-Clang-MacOS-MacOS_15-X86_64-ARM64.7z -> 6.9.3/macos
+2026-10-03 17:44:45,770 - aqt.installer - INFO - installer 8255684480 Total packages: 5
+2026-10-03 17:44:45,925 - aqt.main - INFO - installer 8255684480 aqtinstall(aqt) v3.3.0 on Python 3.9.6 [CPython Clang 21.0.0 (clang-2100.1.1.101)]
+2026-10-03 17:44:45,925 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_692/qt6_692/Updates.xml.sha256
+2026-10-03 17:44:46,525 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/extensions/qtwebengine/692/msvc2022_64/Updates.xml.sha256
+2026-10-03 17:44:46,934 - aqt.archives - INFO - archives 8255684480 Found extension qtwebengine
+2026-10-03 17:44:46,934 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/extensions/qtpdf/692/msvc2022_64/Updates.xml.sha256
+2026-10-03 17:44:47,348 - aqt.archives - INFO - archives 8255684480 Found extension qtpdf
+2026-10-03 17:44:47,365 - aqt.installer - INFO - installer 8255684480 DRY RUN: Would download and install the following:
+2026-10-03 17:44:47,365 - aqt.installer - INFO - installer 8255684480   - qtbase: online/qtsdkrepository/windows_x86/desktop/qt6_692/qt6_692/qt.qt6.692.win64_msvc2022_64/6.9.2-0-202508181147qtbase-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z -> 6.9.2/msvc2022_64
+2026-10-03 17:44:47,365 - aqt.installer - INFO - installer 8255684480   - qtsvg: online/qtsdkrepository/windows_x86/desktop/qt6_692/qt6_692/qt.qt6.692.win64_msvc2022_64/6.9.2-0-202508181147qtsvg-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z -> 6.9.2/msvc2022_64
+2026-10-03 17:44:47,366 - aqt.installer - INFO - installer 8255684480   - qtdeclarative: online/qtsdkrepository/windows_x86/desktop/qt6_692/qt6_692/qt.qt6.692.win64_msvc2022_64/6.9.2-0-202508181147qtdeclarative-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z -> 6.9.2/msvc2022_64
+2026-10-03 17:44:47,366 - aqt.installer - INFO - installer 8255684480   - qttools: online/qtsdkrepository/windows_x86/desktop/qt6_692/qt6_692/qt.qt6.692.win64_msvc2022_64/6.9.2-0-202508181147qttools-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z -> 6.9.2/msvc2022_64
+2026-10-03 17:44:47,366 - aqt.installer - INFO - installer 8255684480   - qttranslations: online/qtsdkrepository/windows_x86/desktop/qt6_692/qt6_692/qt.qt6.692.win64_msvc2022_64/6.9.2-0-202508181147qttranslations-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z -> 6.9.2/msvc2022_64
+2026-10-03 17:44:47,366 - aqt.installer - INFO - installer 8255684480   - d3dcompiler_47: online/qtsdkrepository/windows_x86/desktop/qt6_692/qt6_692/qt.qt6.692.win64_msvc2022_64/6.9.2-0-202508181147d3dcompiler_47-x64.7z -> 6.9.2/msvc2022_64/bin
+2026-10-03 17:44:47,366 - aqt.installer - INFO - installer 8255684480   - opengl32sw: online/qtsdkrepository/windows_x86/desktop/qt6_692/qt6_692/qt.qt6.692.win64_msvc2022_64/6.9.2-0-202508181147opengl32sw-64-mesa_11_2_2-signed_sha256.7z -> 6.9.2/msvc2022_64/bin
+2026-10-03 17:44:47,366 - aqt.installer - INFO - installer 8255684480 Total packages: 7
+2026-10-03 17:44:47,520 - aqt.main - INFO - installer 8255684480 aqtinstall(aqt) v3.3.0 on Python 3.9.6 [CPython Clang 21.0.0 (clang-2100.1.1.101)]
+2026-10-03 17:44:47,520 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_692/qt6_692/Updates.xml.sha256
+2026-10-03 17:44:48,022 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/extensions/qtwebengine/692/x86_64/Updates.xml.sha256
+2026-10-03 17:44:48,430 - aqt.archives - INFO - archives 8255684480 Found extension qtwebengine
+2026-10-03 17:44:48,430 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/extensions/qtpdf/692/x86_64/Updates.xml.sha256
+2026-10-03 17:44:48,843 - aqt.archives - INFO - archives 8255684480 Found extension qtpdf
+2026-10-03 17:44:48,852 - aqt.installer - INFO - installer 8255684480 DRY RUN: Would download and install the following:
+2026-10-03 17:44:48,852 - aqt.installer - INFO - installer 8255684480   - qtbase: online/qtsdkrepository/linux_x64/desktop/qt6_692/qt6_692/qt.qt6.692.linux_gcc_64/6.9.2-0-202508181146qtbase-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z -> 6.9.2/gcc_64
+2026-10-03 17:44:48,852 - aqt.installer - INFO - installer 8255684480   - qtsvg: online/qtsdkrepository/linux_x64/desktop/qt6_692/qt6_692/qt.qt6.692.linux_gcc_64/6.9.2-0-202508181146qtsvg-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z -> 6.9.2/gcc_64
+2026-10-03 17:44:48,852 - aqt.installer - INFO - installer 8255684480   - qtdeclarative: online/qtsdkrepository/linux_x64/desktop/qt6_692/qt6_692/qt.qt6.692.linux_gcc_64/6.9.2-0-202508181146qtdeclarative-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z -> 6.9.2/gcc_64
+2026-10-03 17:44:48,852 - aqt.installer - INFO - installer 8255684480   - qttools: online/qtsdkrepository/linux_x64/desktop/qt6_692/qt6_692/qt.qt6.692.linux_gcc_64/6.9.2-0-202508181146qttools-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z -> 6.9.2/gcc_64
+2026-10-03 17:44:48,853 - aqt.installer - INFO - installer 8255684480   - qttranslations: online/qtsdkrepository/linux_x64/desktop/qt6_692/qt6_692/qt.qt6.692.linux_gcc_64/6.9.2-0-202508181146qttranslations-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z -> 6.9.2/gcc_64
+2026-10-03 17:44:48,853 - aqt.installer - INFO - installer 8255684480   - qtwayland: online/qtsdkrepository/linux_x64/desktop/qt6_692/qt6_692/qt.qt6.692.linux_gcc_64/6.9.2-0-202508181146qtwayland-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z -> 6.9.2/gcc_64
+2026-10-03 17:44:48,853 - aqt.installer - INFO - installer 8255684480   - icu: online/qtsdkrepository/linux_x64/desktop/qt6_692/qt6_692/qt.qt6.692.linux_gcc_64/6.9.2-0-202508181146icu-linux-Rhel8.6-x86_64.7z -> 6.9.2/gcc_64/lib
+2026-10-03 17:44:48,853 - aqt.installer - INFO - installer 8255684480 Total packages: 7
+2026-10-03 17:44:49,011 - aqt.main - INFO - installer 8255684480 aqtinstall(aqt) v3.3.0 on Python 3.9.6 [CPython Clang 21.0.0 (clang-2100.1.1.101)]
+2026-10-03 17:44:49,012 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_692/qt6_692/Updates.xml.sha256
+2026-10-03 17:44:49,447 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/extensions/qtwebengine/692/clang_64/Updates.xml.sha256
+2026-10-03 17:44:49,887 - aqt.archives - INFO - archives 8255684480 Found extension qtwebengine
+2026-10-03 17:44:49,887 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/extensions/qtpdf/692/clang_64/Updates.xml.sha256
+2026-10-03 17:44:50,245 - aqt.archives - INFO - archives 8255684480 Found extension qtpdf
+2026-10-03 17:44:50,252 - aqt.installer - INFO - installer 8255684480 DRY RUN: Would download and install the following:
+2026-10-03 17:44:50,253 - aqt.installer - INFO - installer 8255684480   - qtbase: online/qtsdkrepository/mac_x64/desktop/qt6_692/qt6_692/qt.qt6.692.clang_64/6.9.2-0-202508181146qtbase-MacOS-MacOS_15-Clang-MacOS-MacOS_15-X86_64-ARM64.7z -> 6.9.2/macos
+2026-10-03 17:44:50,253 - aqt.installer - INFO - installer 8255684480   - qtdeclarative: online/qtsdkrepository/mac_x64/desktop/qt6_692/qt6_692/qt.qt6.692.clang_64/6.9.2-0-202508181146qtdeclarative-MacOS-MacOS_15-Clang-MacOS-MacOS_15-X86_64-ARM64.7z -> 6.9.2/macos
+2026-10-03 17:44:50,253 - aqt.installer - INFO - installer 8255684480   - qtsvg: online/qtsdkrepository/mac_x64/desktop/qt6_692/qt6_692/qt.qt6.692.clang_64/6.9.2-0-202508181146qtsvg-MacOS-MacOS_15-Clang-MacOS-MacOS_15-X86_64-ARM64.7z -> 6.9.2/macos
+2026-10-03 17:44:50,253 - aqt.installer - INFO - installer 8255684480   - qttools: online/qtsdkrepository/mac_x64/desktop/qt6_692/qt6_692/qt.qt6.692.clang_64/6.9.2-0-202508181146qttools-MacOS-MacOS_15-Clang-MacOS-MacOS_15-X86_64-ARM64.7z -> 6.9.2/macos
+2026-10-03 17:44:50,253 - aqt.installer - INFO - installer 8255684480   - qttranslations: online/qtsdkrepository/mac_x64/desktop/qt6_692/qt6_692/qt.qt6.692.clang_64/6.9.2-0-202508181146qttranslations-MacOS-MacOS_15-Clang-MacOS-MacOS_15-X86_64-ARM64.7z -> 6.9.2/macos
+2026-10-03 17:44:50,253 - aqt.installer - INFO - installer 8255684480 Total packages: 5
+2026-10-03 17:44:50,416 - aqt.main - INFO - installer 8255684480 aqtinstall(aqt) v3.3.0 on Python 3.9.6 [CPython Clang 21.0.0 (clang-2100.1.1.101)]
+2026-10-03 17:44:50,416 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_684/qt6_684/Updates.xml.sha256
+2026-10-03 17:44:50,612 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_684/qt6_684/Updates.xml.sha256
+2026-10-03 17:44:50,811 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_684/qt6_684/Updates.xml.sha256
+2026-10-03 17:44:51,009 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_684/qt6_684/Updates.xml.sha256
+2026-10-03 17:44:51,196 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_684/qt6_684/Updates.xml.sha256
+2026-10-03 17:44:51,394 - aqt.archives - WARNING - archives 8255684480 Failed to download checksum for the file 'online/qtsdkrepository/windows_x86/desktop/qt6_684/qt6_684/Updates.xml'. This may happen on unofficial mirrors.
+2026-10-03 17:44:51,579 - aqt.main - ERROR - installer 8255684480 Failed to locate XML data for Qt version '6.8.4'.
+==============================Suggested follow-up:==============================
+* Please use 'aqt list-qt windows desktop' to show versions available.
+2026-10-03 17:44:51,725 - aqt.main - INFO - installer 8255684480 aqtinstall(aqt) v3.3.0 on Python 3.9.6 [CPython Clang 21.0.0 (clang-2100.1.1.101)]
+2026-10-03 17:44:51,726 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_684/qt6_684/Updates.xml.sha256
+2026-10-03 17:44:51,922 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_684/qt6_684/Updates.xml.sha256
+2026-10-03 17:44:52,130 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_684/qt6_684/Updates.xml.sha256
+2026-10-03 17:44:52,330 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_684/qt6_684/Updates.xml.sha256
+2026-10-03 17:44:52,550 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_684/qt6_684/Updates.xml.sha256
+2026-10-03 17:44:52,748 - aqt.archives - WARNING - archives 8255684480 Failed to download checksum for the file 'online/qtsdkrepository/linux_x64/desktop/qt6_684/qt6_684/Updates.xml'. This may happen on unofficial mirrors.
+2026-10-03 17:44:52,951 - aqt.main - ERROR - installer 8255684480 Failed to locate XML data for Qt version '6.8.4'.
+==============================Suggested follow-up:==============================
+* Please use 'aqt list-qt linux desktop' to show versions available.
+2026-10-03 17:44:53,103 - aqt.main - INFO - installer 8255684480 aqtinstall(aqt) v3.3.0 on Python 3.9.6 [CPython Clang 21.0.0 (clang-2100.1.1.101)]
+2026-10-03 17:44:53,103 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_684/qt6_684/Updates.xml.sha256
+2026-10-03 17:44:53,444 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_684/qt6_684/Updates.xml.sha256
+2026-10-03 17:44:53,680 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_684/qt6_684/Updates.xml.sha256
+2026-10-03 17:44:53,898 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_684/qt6_684/Updates.xml.sha256
+2026-10-03 17:44:54,130 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_684/qt6_684/Updates.xml.sha256
+2026-10-03 17:44:54,420 - aqt.archives - WARNING - archives 8255684480 Failed to download checksum for the file 'online/qtsdkrepository/mac_x64/desktop/qt6_684/qt6_684/Updates.xml'. This may happen on unofficial mirrors.
+2026-10-03 17:44:54,643 - aqt.main - ERROR - installer 8255684480 Failed to locate XML data for Qt version '6.8.4'.
+==============================Suggested follow-up:==============================
+* Please use 'aqt list-qt mac desktop' to show versions available.
+2026-10-03 17:44:54,812 - aqt.main - INFO - installer 8255684480 aqtinstall(aqt) v3.3.0 on Python 3.9.6 [CPython Clang 21.0.0 (clang-2100.1.1.101)]
+2026-10-03 17:44:54,813 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_683/qt6_683/Updates.xml.sha256
+2026-10-03 17:44:55,250 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/extensions/qtwebengine/683/msvc2022_64/Updates.xml.sha256
+2026-10-03 17:44:55,645 - aqt.archives - INFO - archives 8255684480 Found extension qtwebengine
+2026-10-03 17:44:55,646 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/extensions/qtpdf/683/msvc2022_64/Updates.xml.sha256
+2026-10-03 17:44:56,006 - aqt.archives - INFO - archives 8255684480 Found extension qtpdf
+2026-10-03 17:44:56,020 - aqt.installer - INFO - installer 8255684480 DRY RUN: Would download and install the following:
+2026-10-03 17:44:56,020 - aqt.installer - INFO - installer 8255684480   - qtbase: online/qtsdkrepository/windows_x86/desktop/qt6_683/qt6_683/qt.qt6.683.win64_msvc2022_64/6.8.3-0-202503201308qtbase-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z -> 6.8.3/msvc2022_64
+2026-10-03 17:44:56,020 - aqt.installer - INFO - installer 8255684480   - qtsvg: online/qtsdkrepository/windows_x86/desktop/qt6_683/qt6_683/qt.qt6.683.win64_msvc2022_64/6.8.3-0-202503201308qtsvg-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z -> 6.8.3/msvc2022_64
+2026-10-03 17:44:56,020 - aqt.installer - INFO - installer 8255684480   - qtdeclarative: online/qtsdkrepository/windows_x86/desktop/qt6_683/qt6_683/qt.qt6.683.win64_msvc2022_64/6.8.3-0-202503201308qtdeclarative-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z -> 6.8.3/msvc2022_64
+2026-10-03 17:44:56,020 - aqt.installer - INFO - installer 8255684480   - qttools: online/qtsdkrepository/windows_x86/desktop/qt6_683/qt6_683/qt.qt6.683.win64_msvc2022_64/6.8.3-0-202503201308qttools-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z -> 6.8.3/msvc2022_64
+2026-10-03 17:44:56,020 - aqt.installer - INFO - installer 8255684480   - qttranslations: online/qtsdkrepository/windows_x86/desktop/qt6_683/qt6_683/qt.qt6.683.win64_msvc2022_64/6.8.3-0-202503201308qttranslations-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z -> 6.8.3/msvc2022_64
+2026-10-03 17:44:56,020 - aqt.installer - INFO - installer 8255684480   - d3dcompiler_47: online/qtsdkrepository/windows_x86/desktop/qt6_683/qt6_683/qt.qt6.683.win64_msvc2022_64/6.8.3-0-202503201308d3dcompiler_47-x64.7z -> 6.8.3/msvc2022_64/bin
+2026-10-03 17:44:56,020 - aqt.installer - INFO - installer 8255684480   - opengl32sw: online/qtsdkrepository/windows_x86/desktop/qt6_683/qt6_683/qt.qt6.683.win64_msvc2022_64/6.8.3-0-202503201308opengl32sw-64-mesa_11_2_2-signed_sha256.7z -> 6.8.3/msvc2022_64/bin
+2026-10-03 17:44:56,020 - aqt.installer - INFO - installer 8255684480 Total packages: 7
+2026-10-03 17:44:56,168 - aqt.main - INFO - installer 8255684480 aqtinstall(aqt) v3.3.0 on Python 3.9.6 [CPython Clang 21.0.0 (clang-2100.1.1.101)]
+2026-10-03 17:44:56,169 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_683/qt6_683/Updates.xml.sha256
+2026-10-03 17:44:56,581 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/extensions/qtwebengine/683/x86_64/Updates.xml.sha256
+2026-10-03 17:44:56,964 - aqt.archives - INFO - archives 8255684480 Found extension qtwebengine
+2026-10-03 17:44:56,965 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/extensions/qtpdf/683/x86_64/Updates.xml.sha256
+2026-10-03 17:44:57,329 - aqt.archives - INFO - archives 8255684480 Found extension qtpdf
+2026-10-03 17:44:57,334 - aqt.installer - INFO - installer 8255684480 DRY RUN: Would download and install the following:
+2026-10-03 17:44:57,334 - aqt.installer - INFO - installer 8255684480   - qtbase: online/qtsdkrepository/linux_x64/desktop/qt6_683/qt6_683/qt.qt6.683.linux_gcc_64/6.8.3-0-202503201345qtbase-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z -> 6.8.3/gcc_64
+2026-10-03 17:44:57,334 - aqt.installer - INFO - installer 8255684480   - qtsvg: online/qtsdkrepository/linux_x64/desktop/qt6_683/qt6_683/qt.qt6.683.linux_gcc_64/6.8.3-0-202503201345qtsvg-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z -> 6.8.3/gcc_64
+2026-10-03 17:44:57,334 - aqt.installer - INFO - installer 8255684480   - qtdeclarative: online/qtsdkrepository/linux_x64/desktop/qt6_683/qt6_683/qt.qt6.683.linux_gcc_64/6.8.3-0-202503201345qtdeclarative-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z -> 6.8.3/gcc_64
+2026-10-03 17:44:57,334 - aqt.installer - INFO - installer 8255684480   - qttools: online/qtsdkrepository/linux_x64/desktop/qt6_683/qt6_683/qt.qt6.683.linux_gcc_64/6.8.3-0-202503201345qttools-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z -> 6.8.3/gcc_64
+2026-10-03 17:44:57,334 - aqt.installer - INFO - installer 8255684480   - qttranslations: online/qtsdkrepository/linux_x64/desktop/qt6_683/qt6_683/qt.qt6.683.linux_gcc_64/6.8.3-0-202503201345qttranslations-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z -> 6.8.3/gcc_64
+2026-10-03 17:44:57,334 - aqt.installer - INFO - installer 8255684480   - qtwayland: online/qtsdkrepository/linux_x64/desktop/qt6_683/qt6_683/qt.qt6.683.linux_gcc_64/6.8.3-0-202503201345qtwayland-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z -> 6.8.3/gcc_64
+2026-10-03 17:44:57,334 - aqt.installer - INFO - installer 8255684480   - icu: online/qtsdkrepository/linux_x64/desktop/qt6_683/qt6_683/qt.qt6.683.linux_gcc_64/6.8.3-0-202503201345icu-linux-Rhel8.6-x86_64.7z -> 6.8.3/gcc_64/lib
+2026-10-03 17:44:57,334 - aqt.installer - INFO - installer 8255684480 Total packages: 7
+2026-10-03 17:44:57,478 - aqt.main - INFO - installer 8255684480 aqtinstall(aqt) v3.3.0 on Python 3.9.6 [CPython Clang 21.0.0 (clang-2100.1.1.101)]
+2026-10-03 17:44:57,478 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_683/qt6_683/Updates.xml.sha256
+2026-10-03 17:44:57,850 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/extensions/qtwebengine/683/clang_64/Updates.xml.sha256
+2026-10-03 17:44:58,219 - aqt.archives - INFO - archives 8255684480 Found extension qtwebengine
+2026-10-03 17:44:58,219 - aqt.helper - DEBUG - helper 8255684480 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/mac_x64/extensions/qtpdf/683/clang_64/Updates.xml.sha256
+2026-10-03 17:44:58,595 - aqt.archives - INFO - archives 8255684480 Found extension qtpdf
+2026-10-03 17:44:58,597 - aqt.installer - INFO - installer 8255684480 DRY RUN: Would download and install the following:
+2026-10-03 17:44:58,597 - aqt.installer - INFO - installer 8255684480   - qtbase: online/qtsdkrepository/mac_x64/desktop/qt6_683/qt6_683/qt.qt6.683.clang_64/6.8.3-0-202503201723qtbase-MacOS-MacOS_14-Clang-MacOS-MacOS_14-X86_64-ARM64.7z -> 6.8.3/macos
+2026-10-03 17:44:58,597 - aqt.installer - INFO - installer 8255684480   - qtdeclarative: online/qtsdkrepository/mac_x64/desktop/qt6_683/qt6_683/qt.qt6.683.clang_64/6.8.3-0-202503201723qtdeclarative-MacOS-MacOS_14-Clang-MacOS-MacOS_14-X86_64-ARM64.7z -> 6.8.3/macos
+2026-10-03 17:44:58,597 - aqt.installer - INFO - installer 8255684480   - qtsvg: online/qtsdkrepository/mac_x64/desktop/qt6_683/qt6_683/qt.qt6.683.clang_64/6.8.3-0-202503201723qtsvg-MacOS-MacOS_14-Clang-MacOS-MacOS_14-X86_64-ARM64.7z -> 6.8.3/macos
+2026-10-03 17:44:58,597 - aqt.installer - INFO - installer 8255684480   - qttools: online/qtsdkrepository/mac_x64/desktop/qt6_683/qt6_683/qt.qt6.683.clang_64/6.8.3-0-202503201723qttools-MacOS-MacOS_14-Clang-MacOS-MacOS_14-X86_64-ARM64.7z -> 6.8.3/macos
+2026-10-03 17:44:58,597 - aqt.installer - INFO - installer 8255684480   - qttranslations: online/qtsdkrepository/mac_x64/desktop/qt6_683/qt6_683/qt.qt6.683.clang_64/6.8.3-0-202503201723qttranslations-MacOS-MacOS_14-Clang-MacOS-MacOS_14-X86_64-ARM64.7z -> 6.8.3/macos
+2026-10-03 17:44:58,597 - aqt.installer - INFO - installer 8255684480 Total packages: 5
