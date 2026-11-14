@@ -7,7 +7,10 @@ import "pages"
 ApplicationWindow {
     id: window
 
-    function trText(key) { return typeof I18n === "undefined" ? key : I18n.translate(key, I18n.language) }
+    function trText(key) {
+        return typeof I18n === "undefined" || I18n === null
+            ? key : I18n.translate(key, I18n.language)
+    }
     function languageIndex(language) {
         const languages = window.languageManager.languages || []
         for (let i = 0; i < languages.length; ++i) {
@@ -22,6 +25,8 @@ ApplicationWindow {
     property var fanCurveModel: typeof FanCurveModel === "undefined" ? designFanCurveModel : FanCurveModel
     property var fanController: typeof FanController === "undefined" ? designFanController : FanController
     property var languageManager: typeof LanguageManager === "undefined" ? designLanguageManager : LanguageManager
+    property var applicationController: typeof ThermVaneApplication === "undefined" ? null : ThermVaneApplication
+    property var loggingManager: typeof LoggingManager === "undefined" ? designLoggingManager : LoggingManager
 
     readonly property int usableMinimumWidth: 1300
     readonly property int usableMinimumHeight: 680
@@ -30,12 +35,20 @@ ApplicationWindow {
     height: usableMinimumHeight
     minimumWidth: usableMinimumWidth
     minimumHeight: usableMinimumHeight
-    visible: true
+    // Keep the UI hidden behind the native splash until the backend has
+    // completed its first stable fan/sensor scan. In Qt Design Studio there is
+    // no application controller, so the preview remains visible.
+    visible: !window.applicationController || window.applicationController.backendReady
     title: "ThermVane"
     color: "#111318"
     Material.theme: Material.Dark
     Material.accent: "#55d6be"
     Material.primary: "#1b1f29"
+
+    onClosing: function(close) {
+        if (window.applicationController && window.applicationController.restoreFansToAutomatic)
+            window.applicationController.restoreFansToAutomatic()
+    }
 
     header: ToolBar {
         height: 56
@@ -99,6 +112,9 @@ ApplicationWindow {
                 fanModel: window.fanModel
                 sensorModel: window.sensorModel
                 fanCurveModel: window.fanCurveModel
+                fanController: window.fanController
+                shuttingDown: window.applicationController
+                              ? window.applicationController.shuttingDown : false
             }
             SensorPage {
                 sensorModel: window.sensorModel
@@ -107,6 +123,8 @@ ApplicationWindow {
                 fanModel: window.fanModel
                 sensorModel: window.sensorModel
                 fanController: window.fanController
+                fanCurveModel: window.fanCurveModel
+                loggingManager: window.loggingManager
             }
         }
     }
@@ -140,6 +158,7 @@ ApplicationWindow {
         id: designFanController
         property real emergencyTemperature: 95
         property real minimumSpeed: 20
+        property int fanSpeedDecreaseDelayMs: 2000
     }
 
     QtObject {
@@ -150,5 +169,11 @@ ApplicationWindow {
             { "code": "de", "flag": "🇩🇪", "name": "Deutsch" }
         ]
         function setLanguage(value) { language = value }
+    }
+
+    QtObject {
+        id: designLoggingManager
+        property bool enabled: false
+        property string logDirectory: ""
     }
 }

@@ -17,6 +17,7 @@ class FanCurveModel final : public QAbstractListModel
     Q_OBJECT
     Q_PROPERTY(QString selectedFanId READ selectedFanId WRITE setSelectedFanId NOTIFY selectedFanIdChanged)
     Q_PROPERTY(QString selectedSensorId READ selectedSensorId WRITE setSelectedSensorId NOTIFY selectedSensorIdChanged)
+    Q_PROPERTY(QString startupMode READ startupMode WRITE setStartupMode NOTIFY startupModeChanged)
 
 public:
     enum Role {
@@ -31,6 +32,9 @@ public:
 
     QString selectedSensorId() const;
     void setSelectedSensorId(const QString &sensorId);
+
+    QString startupMode() const;
+    void setStartupMode(const QString &mode);
 
     Q_INVOKABLE QString sensorIdForFan(const QString &fanId) const;
     Q_INVOKABLE void setSensorIdForFan(const QString &fanId, const QString &sensorId);
@@ -52,6 +56,7 @@ public:
 signals:
     void selectedFanIdChanged();
     void selectedSensorIdChanged();
+    void startupModeChanged();
     void fanSensorBindingsChanged();
     void curveAutoFansChanged();
 
@@ -66,6 +71,7 @@ private:
     void saveAllSettings() const;
 
     QString m_selectedFanId;
+    QString m_startupMode = QStringLiteral("system");
     QHash<QString, QString> m_sensorIdsByFanId;
     QHash<QString, FanCurve> m_curvesByFanId;
     QSet<QString> m_curveAutoFanIds;

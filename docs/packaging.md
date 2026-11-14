@@ -33,7 +33,7 @@ BUILD_DIR="build/macos-release" \
 
 The output is written to `<build-dir>/macos-dmg/ThermVaneInstaller.dmg`.
 
-The DMG contains `ThermVane.pkg`. The package installs `ThermVane.app` directly to `/Applications` and runs a root `postinstall` script to install `ThermVaneFanHelper` into `/Library/PrivilegedHelperTools/ThermVaneFanHelper` and register `/Library/LaunchDaemons/com.openthermvane.fanhelper.plist`.
+The DMG contains `ThermVane.pkg`. The package installs `ThermVane.app` directly to `/Applications`. Its privileged package scripts include the helper binary plus `install-fan-helper.sh` and `uninstall-fan-helper.sh`. A `preinstall` step stops ThermVane, removes the previous helper launchd registration and removes legacy OpenThermVane/QtIFW application folders. The root `postinstall` script then installs `ThermVaneFanHelper` into `/Library/PrivilegedHelperTools/ThermVaneFanHelper`, registers `/Library/LaunchDaemons/com.openthermvane.fanhelper.plist`, and keeps root-owned repair scripts in `/Library/Application Support/OpenThermVane`.
 
 The old QtIFW macOS installer is no longer used for release builds because it installs into an application folder and can show QtIFW maintenance package warnings on macOS. Windows and Linux still use QtIFW.
 
@@ -97,7 +97,7 @@ The workflow uses these shared variables at the top of the YAML file:
 - `QT_VERSION`: Qt version used on all runners.
 - `IFW_TOOL_ID`: Qt Installer Framework package id used by `aqtinstall`.
 
-Windows CI omits the optional NBFC component unless `THERMVANE_NBFC_INSTALLER` points to a `.msi` or `.exe` payload during packaging. macOS CI builds a DMG containing a native pkg that installs the app and fan helper. Linux CI copies the Qt runtime libraries, Qt plugins and QML imports from the installed Qt kit into the IFW package.
+Windows CI omits the optional NBFC component unless `THERMVANE_NBFC_INSTALLER` points to a `.msi` or `.exe` payload during packaging. The Windows IFW control script removes an existing OpenThermVane target before installation. macOS CI builds a DMG containing a native pkg that installs the app and fan helper. Linux IFW installations remove an existing `/.../OpenThermVane` or `/.../ThermVane` target before copying the new package. Linux CI copies the Qt runtime libraries, Qt plugins and QML imports from the installed Qt kit into the IFW package.
 
 ## CMake QtIFW target
 

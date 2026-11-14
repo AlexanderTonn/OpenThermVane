@@ -1,17 +1,21 @@
 #include "app/Application.hpp"
 #include "app/LanguageManager.hpp"
+#include "app/LoggingManager.hpp"
 #include "hardware/macos/MacHardwareBackend.hpp"
 #include "hardware/windows/WindowsHardwareBackend.hpp"
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QCoreApplication>
+#include <QDebug>
 #include <QAction>
 #include <QApplication>
 #include <QIcon>
 #include <QMenu>
+#include <QPainter>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QSplashScreen>
 #include <QSystemTrayIcon>
 #include <QQuickStyle>
 #include <QTextStream>
@@ -50,6 +54,7 @@ int setFanSpeedCli(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
     QCoreApplication::setOrganizationName(QStringLiteral("OpenThermVane"));
+    QCoreApplication::setOrganizationDomain(QStringLiteral("com.openthermvane"));
     QCoreApplication::setApplicationName(QStringLiteral("ThermVane"));
     QCoreApplication::setApplicationVersion(QStringLiteral(THERMVANE_VERSION));
     qputenv("THERMVANE_NO_ADMIN_FALLBACK", "1");
@@ -95,6 +100,7 @@ int listSensors(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
     QCoreApplication::setOrganizationName(QStringLiteral("OpenThermVane"));
+    QCoreApplication::setOrganizationDomain(QStringLiteral("com.openthermvane"));
     QCoreApplication::setApplicationName(QStringLiteral("ThermVane"));
     QCoreApplication::setApplicationVersion(QStringLiteral(THERMVANE_VERSION));
 
@@ -149,11 +155,34 @@ int main(int argc, char *argv[])
 
     QApplication app(argc, argv);
     QApplication::setOrganizationName(QStringLiteral("OpenThermVane"));
+    QApplication::setOrganizationDomain(QStringLiteral("com.openthermvane"));
     QApplication::setApplicationName(QStringLiteral("ThermVane"));
     QApplication::setApplicationVersion(QStringLiteral(THERMVANE_VERSION));
     const QIcon appIcon(QStringLiteral(":/assets/icons/thermvane-icon.png"));
     QApplication::setWindowIcon(appIcon);
     QQuickStyle::setStyle(QStringLiteral("Material"));
+
+    QPixmap splashPixmap(520, 300);
+    splashPixmap.fill(QColor(QStringLiteral("#111318")));
+    {
+        QPainter painter(&splashPixmap);
+        painter.setRenderHint(QPainter::Antialiasing);
+        const QPixmap iconPixmap = appIcon.pixmap(96, 96);
+        if (!iconPixmap.isNull()) {
+            painter.drawPixmap((splashPixmap.width() - iconPixmap.width()) / 2, 42, iconPixmap);
+        }
+        painter.setPen(QColor(QStringLiteral("#f4f7fb")));
+        painter.setFont(QFont(QStringLiteral("Sans Serif"), 24, QFont::DemiBold));
+        painter.drawText(QRect(0, 155, splashPixmap.width(), 42), Qt::AlignCenter,
+                         QStringLiteral("ThermVane"));
+        painter.setPen(QColor(QStringLiteral("#aeb8c5")));
+        painter.setFont(QFont(QStringLiteral("Sans Serif"), 13));
+        painter.drawText(QRect(0, 211, splashPixmap.width(), 30), Qt::AlignCenter,
+                         QStringLiteral("Loading hardware backend…"));
+    }
+    QSplashScreen splash(splashPixmap, Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint);
+    splash.show();
+    app.processEvents();
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("ThermVane"));
@@ -161,15 +190,25 @@ int main(int argc, char *argv[])
 
     parser.process(app);
 
+    thermvane::LoggingManager loggingManager;
+    qInfo() << "ThermVane starting" << QApplication::applicationVersion();
     thermvane::Application application;
 
     QQmlApplicationEngine engine;
     thermvane::LanguageManager languageManager(app, engine);
 
+    // A manual SMC target survives after the GUI disappears. Always return
+    // fan control to the firmware before Qt tears down the event loop.
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &application,
+                     [&application] { application.restoreFansToAutomatic(); },
+                     Qt::DirectConnection);
+
     engine.rootContext()->setContextProperty(QStringLiteral("FanModel"), application.fanModel());
     engine.rootContext()->setContextProperty(QStringLiteral("SensorModel"), application.sensorModel());
     engine.rootContext()->setContextProperty(QStringLiteral("FanCurveModel"), application.fanCurveModel());
     engine.rootContext()->setContextProperty(QStringLiteral("FanController"), application.fanController());
+    engine.rootContext()->setContextProperty(QStringLiteral("ThermVaneApplication"), &application);
+    engine.rootContext()->setContextProperty(QStringLiteral("LoggingManager"), &loggingManager);
     engine.rootContext()->setContextProperty(QStringLiteral("LanguageManager"), &languageManager);
     engine.rootContext()->setContextProperty(QStringLiteral("I18n"), &languageManager);
     engine.rootContext()->setContextProperty(QStringLiteral("AppVersion"), QApplication::applicationVersion());
@@ -188,6 +227,17 @@ int main(int argc, char *argv[])
             mainWindow->setIcon(appIcon);
         }
     }
+
+    const auto revealMainWindow = [&application, &splash, mainWindow] {
+        if (!mainWindow || !application.backendReady()) {
+            return;
+        }
+        splash.close();
+        showWindow(mainWindow);
+    };
+    QObject::connect(&application, &thermvane::Application::backendReadyChanged,
+                     &app, revealMainWindow, Qt::QueuedConnection);
+    revealMainWindow();
 
     QMenu trayMenu;
     QAction showAction(&trayMenu);
@@ -220,5 +270,7 @@ int main(int argc, char *argv[])
         trayIcon.show();
     }
 
-    return QApplication::exec();
+    const int exitCode = QApplication::exec();
+    qInfo() << "ThermVane event loop exited" << exitCode;
+    return exitCode;
 }

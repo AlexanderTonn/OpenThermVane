@@ -65,6 +65,20 @@ if(APPLE)
         message(FATAL_ERROR "ThermVane.app was not installed to ${THERMVANE_APP_BUNDLE}")
     endif()
 
+    set(THERMVANE_HELPER "${INSTALL_ROOT}/bin/ThermVaneFanHelper")
+    set(THERMVANE_HELPER_INSTALL_SCRIPT "${SOURCE_DIR}/scripts/macos/install-fan-helper.sh")
+    set(THERMVANE_HELPER_UNINSTALL_SCRIPT "${SOURCE_DIR}/scripts/macos/uninstall-fan-helper.sh")
+    if(NOT EXISTS "${THERMVANE_HELPER}")
+        message(FATAL_ERROR "ThermVaneFanHelper was not installed to ${THERMVANE_HELPER}")
+    endif()
+    foreach(THERMVANE_HELPER_SCRIPT IN ITEMS
+        "${THERMVANE_HELPER_INSTALL_SCRIPT}"
+        "${THERMVANE_HELPER_UNINSTALL_SCRIPT}")
+        if(NOT EXISTS "${THERMVANE_HELPER_SCRIPT}")
+            message(FATAL_ERROR "Required macOS helper script is missing: ${THERMVANE_HELPER_SCRIPT}")
+        endif()
+    endforeach()
+
     execute_process(
         COMMAND "${MACDEPLOYQT_EXECUTABLE}" "${THERMVANE_APP_BUNDLE}"
             "-qmldir=${SOURCE_DIR}/qml"
@@ -114,8 +128,8 @@ file(COPY "${INSTALL_ROOT}/" DESTINATION "${APP_DATA_DIR}")
 if(APPLE)
     file(MAKE_DIRECTORY "${APP_DATA_DIR}/scripts/macos")
     file(COPY
-        "${SOURCE_DIR}/scripts/macos/install-fan-helper.sh"
-        "${SOURCE_DIR}/scripts/macos/uninstall-fan-helper.sh"
+        "${THERMVANE_HELPER_INSTALL_SCRIPT}"
+        "${THERMVANE_HELPER_UNINSTALL_SCRIPT}"
         DESTINATION "${APP_DATA_DIR}/scripts/macos")
     file(CHMOD
         "${APP_DATA_DIR}/scripts/macos/install-fan-helper.sh"

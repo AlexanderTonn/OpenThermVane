@@ -3,6 +3,7 @@
 #include "hardware/IHardwareBackend.hpp"
 
 #include <QHash>
+#include <QTimer>
 
 #if defined(Q_OS_MACOS)
 #include <CoreFoundation/CoreFoundation.h>
@@ -39,6 +40,7 @@ private:
     QHash<QString, int> m_missingFanScans;
     QHash<QString, double> m_pendingManualFanSpeeds;
 #if defined(Q_OS_MACOS)
+    QTimer m_helperLeaseTimer;
     io_connect_t m_powerConnection = IO_OBJECT_NULL;
     io_object_t m_powerNotifier = IO_OBJECT_NULL;
     IONotificationPortRef m_powerNotificationPort = nullptr;

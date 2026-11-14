@@ -4,11 +4,14 @@
 #include <cmath>
 #include <limits>
 #include <QByteArray>
+#include <QDebug>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSaveFile>
 #include <QSettings>
 #include <QSet>
 #include <QVariantMap>
@@ -22,6 +25,10 @@ const QString &fallbackFanId()
     static const QString fallback = QStringLiteral("default");
     return fallback;
 }
+
+constexpr qint64 kMaxCurveFileBytes = 4 * 1024 * 1024;
+constexpr qsizetype kMaxImportedFans = 256;
+constexpr qsizetype kMaxPointsPerFan = 512;
 
 QString normalizedFanId(const QString &fanId)
 {
@@ -58,6 +65,20 @@ QString curveFilePathForExport(const QUrl &fileUrl)
     return path;
 }
 
+QSettings fanCurveSettings()
+{
+#if defined(Q_OS_MACOS)
+    // Keep curve and sensor bindings independent of the bundle identifier.
+    // Older builds used a different identifier, so QSettings' implicit
+    // native path could otherwise silently switch to an empty plist.
+    return QSettings(QDir::homePath()
+                         + QStringLiteral("/Library/Preferences/com.openthermvane.ThermVane.plist"),
+                     QSettings::NativeFormat);
+#else
+    return QSettings();
+#endif
+}
+
 QJsonArray pointsToJson(const QList<FanCurvePoint> &points)
 {
     QJsonArray array;
@@ -73,7 +94,9 @@ QJsonArray pointsToJson(const QList<FanCurvePoint> &points)
 QList<FanCurvePoint> pointsFromJson(const QJsonArray &array)
 {
     QList<FanCurvePoint> points;
-    for (const QJsonValue &value : array) {
+    const qsizetype pointCount = std::min<qsizetype>(array.size(), kMaxPointsPerFan);
+    for (qsizetype index = 0; index < pointCount; ++index) {
+        const QJsonValue value = array.at(index);
         const QJsonObject pointObject = value.toObject();
         const double temperature = pointObject.value(QStringLiteral("temperature")).toDouble(std::numeric_limits<double>::quiet_NaN());
         const double speed = pointObject.value(QStringLiteral("speed")).toDouble(std::numeric_limits<double>::quiet_NaN());
@@ -113,6 +136,7 @@ void FanCurveModel::setSelectedFanId(const QString &fanId)
     endResetModel();
 
     saveSelectedFanId();
+    qInfo() << "Selected fan curve changed to" << m_selectedFanId;
 
     emit selectedFanIdChanged();
     emit selectedSensorIdChanged();
@@ -126,6 +150,28 @@ QString FanCurveModel::selectedSensorId() const
 void FanCurveModel::setSelectedSensorId(const QString &sensorId)
 {
     setSensorIdForFan(m_selectedFanId, sensorId);
+}
+
+QString FanCurveModel::startupMode() const
+{
+    return m_startupMode;
+}
+
+void FanCurveModel::setStartupMode(const QString &mode)
+{
+    const QString normalized = mode.compare(QStringLiteral("curve"), Qt::CaseInsensitive) == 0
+        ? QStringLiteral("curve")
+        : QStringLiteral("system");
+    if (m_startupMode == normalized) {
+        return;
+    }
+
+    m_startupMode = normalized;
+    QSettings settings = fanCurveSettings();
+    settings.setValue(QStringLiteral("fanCurves/startupMode"), m_startupMode);
+    settings.sync();
+    qInfo() << "Fan startup mode changed to" << m_startupMode;
+    emit startupModeChanged();
 }
 
 QString FanCurveModel::sensorIdForFan(const QString &fanId) const
@@ -147,6 +193,7 @@ void FanCurveModel::setSensorIdForFan(const QString &fanId, const QString &senso
     }
 
     saveSensorIdForFan(key);
+    qInfo() << "Sensor binding changed" << key << "->" << sensorId;
 
     if (key == normalizedFanId(m_selectedFanId)) {
         emit selectedSensorIdChanged();
@@ -259,129 +306,111 @@ bool FanCurveModel::exportCurves(const QUrl &fileUrl) const
 {
     const QString path = curveFilePathForExport(fileUrl);
     if (path.isEmpty()) {
+        qWarning() << "Curve export rejected: invalid file path" << fileUrl;
         return false;
     }
 
-    QSet<QString> fanIds;
-    for (auto it = m_curvesByFanId.constBegin(); it != m_curvesByFanId.constEnd(); ++it) {
-        fanIds.insert(it.key());
-    }
-    for (auto it = m_sensorIdsByFanId.constBegin(); it != m_sensorIdsByFanId.constEnd(); ++it) {
-        fanIds.insert(it.key());
-    }
-    for (const QString &fanId : m_curveAutoFanIds) {
-        fanIds.insert(fanId);
-    }
-    fanIds.insert(normalizedFanId(m_selectedFanId));
-
-    QStringList sortedFanIds = fanIds.values();
-    sortedFanIds.sort();
-
-    QJsonArray fanArray;
-    for (const QString &fanId : sortedFanIds) {
-        QJsonObject fanObject;
-        fanObject.insert(QStringLiteral("fanId"), fanId);
-        fanObject.insert(QStringLiteral("sensorId"), m_sensorIdsByFanId.value(fanId));
-        fanObject.insert(QStringLiteral("curveAuto"), m_curveAutoFanIds.contains(fanId));
-        fanObject.insert(QStringLiteral("points"), pointsToJson(curveForFan(fanId).points()));
-        fanArray.append(fanObject);
-    }
-
-    QStringList autoFanIds = m_curveAutoFanIds.values();
-    autoFanIds.sort();
-
+    // A profile is deliberately independent of a physical fan. This lets a
+    // curve exported from one fan be imported into another one without
+    // changing sensor bindings, auto modes, or the selected fan.
     QJsonObject root;
     root.insert(QStringLiteral("format"), QStringLiteral("OpenThermVaneCurveProfile"));
-    root.insert(QStringLiteral("version"), 1);
-    root.insert(QStringLiteral("selectedFanId"), normalizedFanId(m_selectedFanId));
-    root.insert(QStringLiteral("curveAutoFanIds"), QJsonArray::fromStringList(autoFanIds));
-    root.insert(QStringLiteral("fans"), fanArray);
+    root.insert(QStringLiteral("version"), 2);
+    root.insert(QStringLiteral("points"), pointsToJson(curveForFan(m_selectedFanId).points()));
 
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) {
+        qWarning() << "Curve export failed to open file" << path << file.errorString();
         return false;
     }
 
-    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
-    return file.error() == QFileDevice::NoError;
+    if (file.write(QJsonDocument(root).toJson(QJsonDocument::Indented)) < 0
+        || file.error() != QFileDevice::NoError) {
+        qWarning() << "Curve export failed while writing" << path << file.errorString();
+        return false;
+    }
+    const bool committed = file.commit();
+    if (committed) {
+        qInfo() << "Curve exported" << path << "points"
+                << curveForFan(m_selectedFanId).points().size();
+    } else {
+        qWarning() << "Curve export failed to commit" << path << file.errorString();
+    }
+    return committed;
 }
 
 bool FanCurveModel::importCurves(const QUrl &fileUrl)
 {
     const QString path = localFilePath(fileUrl);
     if (path.isEmpty()) {
+        qWarning() << "Curve import rejected: invalid file path" << fileUrl;
         return false;
     }
 
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) {
+        qWarning() << "Curve import failed to open file" << path << file.errorString();
+        return false;
+    }
+
+    if (file.size() < 0 || file.size() > kMaxCurveFileBytes) {
+        qWarning() << "Curve import rejected due to file size" << path << file.size();
         return false;
     }
 
     const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
     if (!document.isObject()) {
+        qWarning() << "Curve import rejected: invalid JSON" << path;
         return false;
     }
 
     const QJsonObject root = document.object();
-    if (root.value(QStringLiteral("format")).toString() != QStringLiteral("OpenThermVaneCurveProfile")
-        || root.value(QStringLiteral("version")).toInt() != 1) {
+    if (root.value(QStringLiteral("format")).toString() != QStringLiteral("OpenThermVaneCurveProfile")) {
+        qWarning() << "Curve import rejected: unknown format" << path;
         return false;
     }
 
-    QHash<QString, FanCurve> importedCurves;
-    QHash<QString, QString> importedSensorIds;
-    QSet<QString> importedCurveAutoFanIds;
-
-    const QJsonArray fans = root.value(QStringLiteral("fans")).toArray();
-    for (const QJsonValue &value : fans) {
-        const QJsonObject fanObject = value.toObject();
-        const QString fanId = normalizedFanId(fanObject.value(QStringLiteral("fanId")).toString());
-        const QList<FanCurvePoint> points = pointsFromJson(fanObject.value(QStringLiteral("points")).toArray());
-        if (points.size() >= 2) {
-            importedCurves.insert(fanId, FanCurve(points));
+    const int version = root.value(QStringLiteral("version")).toInt();
+    QJsonArray pointArray;
+    if (version == 2) {
+        pointArray = root.value(QStringLiteral("points")).toArray();
+    } else if (version == 1) {
+        // Read legacy multi-fan profiles without restoring any of their
+        // settings. Only the points are imported into the currently selected
+        // fan, preserving compatibility with files created by older builds.
+        const QJsonArray fans = root.value(QStringLiteral("fans")).toArray();
+        if (fans.size() > kMaxImportedFans) {
+            return false;
         }
 
-        const QString sensorId = fanObject.value(QStringLiteral("sensorId")).toString();
-        if (!sensorId.isEmpty()) {
-            importedSensorIds.insert(fanId, sensorId);
+        const QString legacySelectedFanId = normalizedFanId(
+            root.value(QStringLiteral("selectedFanId")).toString());
+        for (const QJsonValue &value : fans) {
+            const QJsonObject fanObject = value.toObject();
+            if (normalizedFanId(fanObject.value(QStringLiteral("fanId")).toString())
+                == legacySelectedFanId) {
+                pointArray = fanObject.value(QStringLiteral("points")).toArray();
+                break;
+            }
         }
-
-        if (fanObject.value(QStringLiteral("curveAuto")).toBool()) {
-            importedCurveAutoFanIds.insert(fanId);
-        }
-    }
-
-    const QJsonArray autoFanIds = root.value(QStringLiteral("curveAutoFanIds")).toArray();
-    for (const QJsonValue &value : autoFanIds) {
-        const QString fanId = normalizedFanId(value.toString());
-        if (!fanId.isEmpty()) {
-            importedCurveAutoFanIds.insert(fanId);
-        }
-    }
-
-    if (importedCurves.isEmpty()) {
+    } else {
+        qWarning() << "Curve import rejected: unsupported version" << version << path;
         return false;
     }
 
-    const QString selectedFanId = normalizedFanId(root.value(QStringLiteral("selectedFanId")).toString(m_selectedFanId));
-    const QString nextSelectedFanId = importedCurves.contains(selectedFanId)
-        ? selectedFanId
-        : importedCurves.constBegin().key();
+    const QList<FanCurvePoint> importedPoints = pointsFromJson(pointArray);
+    if (importedPoints.size() < 2) {
+        qWarning() << "Curve import rejected: fewer than two valid points" << path;
+        return false;
+    }
 
     beginResetModel();
-    m_curvesByFanId = importedCurves;
-    m_sensorIdsByFanId = importedSensorIds;
-    m_curveAutoFanIds = importedCurveAutoFanIds;
-    m_selectedFanId = nextSelectedFanId == fallbackFanId() ? QString() : nextSelectedFanId;
+    m_curvesByFanId.insert(normalizedFanId(m_selectedFanId), FanCurve(importedPoints));
     endResetModel();
 
-    saveAllSettings();
-
-    emit selectedFanIdChanged();
-    emit selectedSensorIdChanged();
-    emit fanSensorBindingsChanged();
-    emit curveAutoFansChanged();
+    saveCurveForFan(m_selectedFanId);
+    qInfo() << "Curve imported" << path << "into fan" << m_selectedFanId
+            << "points" << importedPoints.size();
     return true;
 }
 
@@ -403,10 +432,14 @@ const FanCurve &FanCurveModel::curveForFan(const QString &fanId) const
 
 void FanCurveModel::loadSettings()
 {
-    QSettings settings;
+    QSettings settings = fanCurveSettings();
     settings.beginGroup(QStringLiteral("fanCurves"));
 
     m_selectedFanId = settings.value(QStringLiteral("selectedFanId")).toString();
+    m_startupMode = settings.value(QStringLiteral("startupMode"), QStringLiteral("system")).toString()
+                        .compare(QStringLiteral("curve"), Qt::CaseInsensitive) == 0
+        ? QStringLiteral("curve")
+        : QStringLiteral("system");
 
     settings.beginGroup(QStringLiteral("curves"));
     const QStringList curveGroups = settings.childGroups();
@@ -454,11 +487,18 @@ void FanCurveModel::loadSettings()
     }
 
     settings.endGroup();
+
+    qInfo() << "Loaded fan curve settings; selected fan" << m_selectedFanId
+            << "startup mode" << m_startupMode
+            << "sensor bindings" << m_sensorIdsByFanId.size();
+    for (auto it = m_sensorIdsByFanId.constBegin(); it != m_sensorIdsByFanId.constEnd(); ++it) {
+        qInfo() << "Loaded sensor binding" << it.key() << "->" << it.value();
+    }
 }
 
 void FanCurveModel::saveSelectedFanId() const
 {
-    QSettings settings;
+    QSettings settings = fanCurveSettings();
     settings.setValue(QStringLiteral("fanCurves/selectedFanId"), m_selectedFanId);
 }
 
@@ -470,7 +510,7 @@ void FanCurveModel::saveCurveForFan(const QString &fanId) const
         return;
     }
 
-    QSettings settings;
+    QSettings settings = fanCurveSettings();
     settings.beginGroup(QStringLiteral("fanCurves"));
     settings.beginGroup(QStringLiteral("curves"));
     settings.beginGroup(settingsKeyForFanId(key));
@@ -491,7 +531,7 @@ void FanCurveModel::saveCurveForFan(const QString &fanId) const
 void FanCurveModel::saveSensorIdForFan(const QString &fanId) const
 {
     const QString key = normalizedFanId(fanId);
-    QSettings settings;
+    QSettings settings = fanCurveSettings();
     settings.beginGroup(QStringLiteral("fanCurves"));
     settings.beginGroup(QStringLiteral("sensors"));
 
@@ -515,16 +555,17 @@ void FanCurveModel::saveCurveAutoFanIds() const
     QStringList ids = m_curveAutoFanIds.values();
     ids.sort();
 
-    QSettings settings;
+    QSettings settings = fanCurveSettings();
     settings.setValue(QStringLiteral("fanCurves/curveAutoFanIds"), ids);
 }
 
 void FanCurveModel::saveAllSettings() const
 {
-    QSettings settings;
+    QSettings settings = fanCurveSettings();
     settings.beginGroup(QStringLiteral("fanCurves"));
     settings.remove(QString());
     settings.setValue(QStringLiteral("selectedFanId"), m_selectedFanId);
+    settings.setValue(QStringLiteral("startupMode"), m_startupMode);
 
     settings.beginGroup(QStringLiteral("curves"));
     for (auto it = m_curvesByFanId.constBegin(); it != m_curvesByFanId.constEnd(); ++it) {

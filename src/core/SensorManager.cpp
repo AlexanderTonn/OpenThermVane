@@ -2,6 +2,7 @@
 
 #include "hardware/IHardwareBackend.hpp"
 
+#include <QDebug>
 #include <QSettings>
 #include <algorithm>
 
@@ -12,7 +13,10 @@ SensorManager::SensorManager(QObject *parent)
 {
     QSettings settings;
     m_refreshIntervalMs = settings.value(QStringLiteral("sensors/refreshIntervalMs"), 1000).toInt();
-    m_refreshIntervalMs = std::clamp(m_refreshIntervalMs, 250, 60000);
+    // Keep the safety/emergency controller responsive even when a stale
+    // setting from an older build requested a very long interval.
+    m_refreshIntervalMs = std::clamp(m_refreshIntervalMs, 250, 10000);
+    qInfo() << "Sensor manager initialized; refresh interval ms" << m_refreshIntervalMs;
 
     m_refreshTimer.setInterval(m_refreshIntervalMs);
     connect(&m_refreshTimer, &QTimer::timeout, this, &SensorManager::scan);
@@ -29,6 +33,7 @@ void SensorManager::setBackend(IHardwareBackend *backend)
     }
 
     m_backend = backend;
+    qInfo() << "Sensor backend changed" << (m_backend ? "available" : "none");
     if (m_backend) {
         connect(m_backend, &IHardwareBackend::hardwareChanged, this, &SensorManager::refresh);
         m_refreshTimer.start();
@@ -51,7 +56,7 @@ int SensorManager::refreshIntervalMs() const
 
 void SensorManager::setRefreshIntervalMs(int intervalMs)
 {
-    const int clampedInterval = std::clamp(intervalMs, 250, 60000);
+    const int clampedInterval = std::clamp(intervalMs, 250, 10000);
     if (m_refreshIntervalMs == clampedInterval) {
         return;
     }
@@ -61,6 +66,8 @@ void SensorManager::setRefreshIntervalMs(int intervalMs)
 
     QSettings settings;
     settings.setValue(QStringLiteral("sensors/refreshIntervalMs"), m_refreshIntervalMs);
+    settings.sync();
+    qInfo() << "Sensor refresh interval changed to" << m_refreshIntervalMs << "ms";
 
     emit refreshIntervalMsChanged();
 }
@@ -68,6 +75,7 @@ void SensorManager::setRefreshIntervalMs(int intervalMs)
 void SensorManager::scan()
 {
     if (m_backend) {
+        qDebug() << "Scanning temperature sensors";
         m_backend->scan();
     }
 }
@@ -81,10 +89,16 @@ void SensorManager::refresh()
         for (const auto &sensor : sensors) {
             if (sensor.available) {
                 m_sensors.append(sensor);
+                if (sensor.temperatureCelsius >= 90.0) {
+                    qWarning() << "High temperature sensor reading"
+                               << sensor.name << sensor.temperatureCelsius << "C"
+                               << "source" << sensor.source;
+                }
             }
         }
     }
 
+    qDebug() << "Temperature sensor refresh completed; readable sensors" << m_sensors.size();
     emit sensorsChanged();
 }
 

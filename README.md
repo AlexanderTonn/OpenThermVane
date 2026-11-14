@@ -30,7 +30,15 @@ macOS blocks SMC fan writes from a normal GUI process. For manual fan control, i
 ./scripts/macos/install-fan-helper.sh
 ```
 
-After that, ThermVane talks to the running helper over a local Unix socket. If launchd is not currently serving the socket, ThermVane can fall back to the installed privileged helper binary. It does not ask for a password on every fan change.
+For a local build, this also builds and installs the helper in one step:
+
+```sh
+./scripts/macos/build-and-install-fan-helper.sh
+```
+
+After that, ThermVane talks to the running helper over a local Unix socket. On an installed system, manual writes require the lease-backed helper server; if it is unavailable, ThermVane refuses an unsafe one-shot privileged write. The installed helper binary remains available for restoring system control. It does not ask for a password on every fan change.
+
+For development-only machines without the installed helper, the unsafe direct SMC fallback can be explicitly enabled with `-DTHERMVANE_ALLOW_UNLEASED_DIRECT_SMC=ON`. Release builds leave this option disabled so a crashed application cannot leave a manual fan override behind without the helper lease.
 
 To remove it:
 
@@ -38,7 +46,9 @@ To remove it:
 ./scripts/macos/uninstall-fan-helper.sh
 ```
 
-The helper socket is `/tmp/thermvane-fan-helper.sock`. The installed helper path is `/Library/PrivilegedHelperTools/ThermVaneFanHelper`. The helper is restarted by launchd and logs to `/var/log/thermvane-fan-helper.log`.
+Beim Windows-IFW-Build wird eine NBFC-Payload mit `-NbfcInstaller` nur akzeptiert, wenn sie authenticode-signiert ist oder zusätzlich der erwartete SHA-256-Hash über `-NbfcSha256` angegeben wird. Der Hash wird in das Paket aufgenommen und vor der Installation erneut geprüft.
+
+The helper socket is `/tmp/thermvane-fan-helper.sock` and is restricted to the user who installed ThermVane. The installed helper path is `/Library/PrivilegedHelperTools/ThermVaneFanHelper`. The helper is restarted by launchd and logs to `/var/log/thermvane-fan-helper.log`.
 
 ## Architecture
 

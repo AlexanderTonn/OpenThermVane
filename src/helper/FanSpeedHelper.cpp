@@ -12,11 +12,14 @@
 #include <array>
 #include <atomic>
 #include <cerrno>
+#include <chrono>
 #include <cmath>
 #include <csignal>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
 #include <iostream>
+#include <limits>
 #include <mutex>
 #include <optional>
 #include <set>
@@ -31,10 +34,16 @@ constexpr uint32_t kSmcSelector = 2;
 constexpr uint8_t kSmcCommandReadKeyInfo = 9;
 constexpr uint8_t kSmcCommandReadBytes = 5;
 constexpr uint8_t kSmcCommandWriteBytes = 6;
+constexpr const char *kAuthorizedUidFile = "/Library/Application Support/OpenThermVane/fan-helper.uid";
+constexpr const char *kSocketPath = "/tmp/thermvane-fan-helper.sock";
+constexpr auto kClientLeaseTimeout = std::chrono::seconds(15);
 
 std::mutex g_controlledFansMutex;
 std::set<std::string> g_controlledFans;
+std::chrono::steady_clock::time_point g_lastClientActivity = std::chrono::steady_clock::now();
 std::atomic_bool g_running = true;
+std::atomic_bool g_commandInFlight = false;
+std::recursive_mutex g_smcOperationMutex;
 std::mutex g_powerRunLoopMutex;
 CFRunLoopRef g_powerRunLoop = nullptr;
 
@@ -300,8 +309,60 @@ private:
     io_connect_t m_connection = IO_OBJECT_NULL;
 };
 
+bool writeFanModeWithUnlock(const AppleSmcConnection &smc, int fanIndex, double mode)
+{
+    const auto writeMode = [&]() {
+        return smc.writeNumber(fanKey(fanIndex, "Md"), mode)
+            || smc.writeNumber(fanKey(fanIndex, "md"), mode);
+    };
+
+    if (writeMode()) {
+        return true;
+    }
+
+    // On M3/M4 Macs thermalmonitord can hold the fan in system mode (3) and
+    // reject F0Md/F0md writes. Ftst=1 makes it yield; the mode write only
+    // succeeds after the firmware transitions to an idle/auto state.
+    if (mode != 1.0 || !smc.writeNumber("Ftst", 1.0)) {
+        return false;
+    }
+
+    constexpr int kUnlockAttempts = 60; // up to six seconds, 100 ms each
+    for (int attempt = 0; attempt < kUnlockAttempts && g_running.load(); ++attempt) {
+        if (writeMode()) {
+            return true;
+        }
+        usleep(100000);
+    }
+
+    return false;
+}
+
+bool restoreFanControl(const std::string &fanId);
+void markFanControlled(const std::string &fanId);
+void markFanRestored(const std::string &fanId);
+
+void touchClientLease()
+{
+    std::scoped_lock lock(g_controlledFansMutex);
+    g_lastClientActivity = std::chrono::steady_clock::now();
+}
+
+bool clientLeaseExpired()
+{
+    std::scoped_lock lock(g_controlledFansMutex);
+    return !g_controlledFans.empty()
+        && std::chrono::steady_clock::now() - g_lastClientActivity > kClientLeaseTimeout;
+}
+
 bool setFanSpeed(const std::string &fanId, double percent)
 {
+    std::lock_guard<std::recursive_mutex> operationLock(g_smcOperationMutex);
+    if (!std::isfinite(percent) || percent < 0.0 || percent > 100.0) {
+        std::cerr << "Invalid fan percent\n";
+        return false;
+    }
+
     const auto fanIndex = fanIndexFromId(fanId);
     if (!fanIndex) {
         std::cerr << "Invalid fan id\n";
@@ -320,31 +381,47 @@ bool setFanSpeed(const std::string &fanId, double percent)
         || !smc.readNumber(fanKey(*fanIndex, "Mx"), maxRpm)
         || !std::isfinite(minRpm)
         || !std::isfinite(maxRpm)
+        || minRpm < 0.0
+        || maxRpm > 20000.0
         || maxRpm <= minRpm) {
         std::cerr << "Could not read fan limits\n";
         return false;
     }
 
     const double clampedPercent = std::clamp(percent, 0.0, 100.0);
-    const double targetRpm = minRpm + ((maxRpm - minRpm) * clampedPercent / 100.0);
+    // On Apple Silicon, F*Mn is often the lowest *running* speed (around
+    // 2000 RPM), not the stop value. A curve point at 0 % must therefore be
+    // sent as an explicit 0 RPM target instead of being mapped to F*Mn.
+    const double targetRpm = clampedPercent <= 0.0
+        ? 0.0
+        : minRpm + ((maxRpm - minRpm) * clampedPercent / 100.0);
 
-    bool modeSet = false;
+    bool modeSet = writeFanModeWithUnlock(smc, *fanIndex, 1.0);
+
     double maskValue = 0.0;
-    if (smc.readNumber("FS! ", maskValue)) {
+    if (!modeSet && smc.readNumber("FS! ", maskValue)) {
         const uint16_t bit = static_cast<uint16_t>(1U << *fanIndex);
         const uint16_t mask = static_cast<uint16_t>(std::lround(std::clamp(maskValue, 0.0, 65535.0))) | bit;
         modeSet = smc.writeNumber("FS! ", mask);
     }
+
     if (!modeSet) {
-        modeSet = smc.writeNumber(fanKey(*fanIndex, "Md"), 1.0)
-            || smc.writeNumber(fanKey(*fanIndex, "md"), 1.0);
+        smc.writeNumber("Ftst", 0.0);
+        std::cerr << "Could not unlock fan control mode\n";
+        return false;
     }
 
-    smc.writeNumber("Ftst", 1.0);
+    // Track the fan before the target write. If the target write fails or the
+    // helper is terminated, shutdown cleanup must still restore this fan.
+    markFanControlled(fanId);
+
     const bool targetSet = smc.writeNumber(fanKey(*fanIndex, "Tg"), targetRpm)
         || smc.writeNumber(fanKey(*fanIndex, "Tg"), targetRpm);
 
     if (!modeSet || !targetSet) {
+        if (modeSet && !restoreFanControl(fanId)) {
+            std::cerr << "SMC write failed and automatic restore also failed\n";
+        }
         std::cerr << "SMC write failed modeSet=" << modeSet
                   << " targetSet=" << targetSet
                   << " targetRpm=" << targetRpm << '\n';
@@ -356,6 +433,7 @@ bool setFanSpeed(const std::string &fanId, double percent)
 
 bool restoreFanControl(const std::string &fanId)
 {
+    std::lock_guard<std::recursive_mutex> operationLock(g_smcOperationMutex);
     const auto fanIndex = fanIndexFromId(fanId);
     if (!fanIndex) {
         std::cerr << "Invalid fan id\n";
@@ -368,17 +446,27 @@ bool restoreFanControl(const std::string &fanId)
         return false;
     }
 
-    bool modeSet = false;
+    double currentMode = 0.0;
+    const bool modeReadable = smc.readNumber(fanKey(*fanIndex, "Md"), currentMode)
+        || smc.readNumber(fanKey(*fanIndex, "md"), currentMode);
+    if (modeReadable) {
+        const int mode = static_cast<int>(std::lround(currentMode));
+        if (mode == 0 || mode == 3) {
+            // Already under firmware/system control. Clearing Ftst is enough
+            // and avoids reporting a false restore failure on startup.
+            smc.writeNumber("Ftst", 0.0);
+            return true;
+        }
+    }
+
+    bool modeSet = writeFanModeWithUnlock(smc, *fanIndex, 0.0);
+
     double maskValue = 0.0;
-    if (smc.readNumber("FS! ", maskValue)) {
+    if (!modeSet && smc.readNumber("FS! ", maskValue)) {
         const uint16_t bit = static_cast<uint16_t>(1U << *fanIndex);
         const uint16_t mask = static_cast<uint16_t>(std::lround(std::clamp(maskValue, 0.0, 65535.0)))
             & static_cast<uint16_t>(~bit);
         modeSet = smc.writeNumber("FS! ", mask);
-    }
-    if (!modeSet) {
-        modeSet = smc.writeNumber(fanKey(*fanIndex, "Md"), 0.0)
-            || smc.writeNumber(fanKey(*fanIndex, "md"), 0.0);
     }
 
     smc.writeNumber("Ftst", 0.0);
@@ -516,8 +604,26 @@ std::string readLine(int fd)
     return line;
 }
 
-void handleClient(int clientFd)
+bool authorizedPeer(int clientFd, uid_t allowedUid)
 {
+    uid_t peerUid = 0;
+    gid_t peerGid = 0;
+    return getpeereid(clientFd, &peerUid, &peerGid) == 0 && peerUid == allowedUid;
+}
+
+void handleClient(int clientFd, uid_t allowedUid)
+{
+    timeval timeout = {2, 0};
+    setsockopt(clientFd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    setsockopt(clientFd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+
+    if (!authorizedPeer(clientFd, allowedUid)) {
+        writeAll(clientFd, "ERR unauthorized\n");
+        return;
+    }
+
+    touchClientLease();
+
     const std::string line = readLine(clientFd);
     std::istringstream stream(line);
     std::string command;
@@ -531,7 +637,9 @@ void handleClient(int clientFd)
     if (command == "RESTORE") {
         std::string fanId;
         stream >> fanId;
-        if (fanId.empty() || stream.fail()) {
+        std::string trailing;
+        const bool hasTrailingData = static_cast<bool>(stream >> trailing);
+        if (fanId.empty() || stream.fail() || hasTrailingData) {
             writeAll(clientFd, "ERR invalid command\n");
             return;
         }
@@ -547,8 +655,11 @@ void handleClient(int clientFd)
     std::string fanId;
     double percent = 0.0;
     stream >> fanId >> percent;
+    std::string trailing;
+    const bool hasTrailingData = static_cast<bool>(stream >> trailing);
 
-    if (command != "SET" || fanId.empty() || stream.fail()) {
+    if (command != "SET" || fanId.empty() || stream.fail() || hasTrailingData
+        || !std::isfinite(percent) || percent < 0.0 || percent > 100.0) {
         writeAll(clientFd, "ERR invalid command\n");
         return;
     }
@@ -561,9 +672,15 @@ void handleClient(int clientFd)
     }
 }
 
-int runServer(const std::string &socketPath)
+int runServer(const std::string &socketPath, uid_t allowedUid)
 {
+    if (socketPath != kSocketPath) {
+        std::cerr << "Refusing non-canonical helper socket path\n";
+        return 2;
+    }
+
     g_running.store(true);
+    touchClientLease();
     signal(SIGPIPE, SIG_IGN);
     signal(SIGTERM, handleTerminationSignal);
     signal(SIGINT, handleTerminationSignal);
@@ -589,7 +706,13 @@ int runServer(const std::string &socketPath)
         close(serverFd);
         return 1;
     }
-    chmod(socketPath.c_str(), 0666);
+    if (chown(socketPath.c_str(), allowedUid, static_cast<gid_t>(-1)) != 0
+        || chmod(socketPath.c_str(), 0600) != 0) {
+        std::cerr << "socket permission setup failed: " << std::strerror(errno) << '\n';
+        close(serverFd);
+        unlink(socketPath.c_str());
+        return 1;
+    }
 
     if (listen(serverFd, 8) != 0) {
         std::cerr << "listen failed: " << std::strerror(errno) << '\n';
@@ -608,12 +731,39 @@ int runServer(const std::string &socketPath)
         if (ready > 0 && FD_ISSET(serverFd, &fds)) {
             const int clientFd = accept(serverFd, nullptr, nullptr);
             if (clientFd >= 0) {
-                handleClient(clientFd);
-                close(clientFd);
+                if (g_commandInFlight.exchange(true)) {
+                    writeAll(clientFd, "ERR busy\n");
+                    close(clientFd);
+                } else {
+                    try {
+                        std::thread([clientFd, allowedUid] {
+                            try {
+                                handleClient(clientFd, allowedUid);
+                            } catch (...) {
+                                writeAll(clientFd, "ERR internal error\n");
+                            }
+                            close(clientFd);
+                            g_commandInFlight.store(false);
+                        }).detach();
+                    } catch (...) {
+                        g_commandInFlight.store(false);
+                        writeAll(clientFd, "ERR busy\n");
+                        close(clientFd);
+                    }
+                }
             }
+        }
+
+        if (clientLeaseExpired()) {
+            restoreAllControlledFans("client lease timeout");
+            touchClientLease();
         }
     }
 
+    // Let the serialized client operation finish before final restoration.
+    for (int waitMs = 0; g_commandInFlight.load() && waitMs < 10000; waitMs += 10) {
+        usleep(10000);
+    }
     restoreAllControlledFans("helper shutdown");
     stopPowerNotificationLoop();
     if (powerThread.joinable()) {
@@ -625,15 +775,73 @@ int runServer(const std::string &socketPath)
     return 0;
 }
 
+std::optional<uid_t> configuredAuthorizedUid()
+{
+    std::ifstream authorizedUidFile(kAuthorizedUidFile);
+    unsigned long value = 0;
+    if (!(authorizedUidFile >> value)
+        || value > static_cast<unsigned long>(std::numeric_limits<uid_t>::max())
+        || value == 0) {
+        return std::nullopt;
+    }
+    return static_cast<uid_t>(value);
+}
+
+bool authorizedDirectCaller()
+{
+    if (getuid() == 0) {
+        return true;
+    }
+    const auto allowedUid = configuredAuthorizedUid();
+    return allowedUid.has_value() && allowedUid.value() == getuid();
+}
+
 } // namespace
 
 int main(int argc, char *argv[])
 {
     if (argc == 3 && std::string(argv[1]) == "--server") {
-        return runServer(argv[2]);
+        // The server is launched by launchd as root. Do not allow the
+        // setuid command-line interface to spawn an additional root server
+        // or replace the canonical socket from an unprivileged process.
+        if (getuid() != 0) {
+            std::cerr << "Unauthorized caller\n";
+            return 1;
+        }
+        const auto allowedUid = configuredAuthorizedUid();
+        if (!allowedUid.has_value()) {
+            std::cerr << "Authorized UID is not configured\n";
+            return 2;
+        }
+        return runServer(argv[2], allowedUid.value());
+    }
+
+    if (argc == 5 && std::string(argv[1]) == "--server" && std::string(argv[3]) == "--uid") {
+        if (getuid() != 0) {
+            std::cerr << "Unauthorized caller\n";
+            return 1;
+        }
+        try {
+            const unsigned long parsedUid = std::stoul(argv[4]);
+            if (parsedUid > static_cast<unsigned long>(std::numeric_limits<uid_t>::max())) {
+                return 2;
+            }
+            const auto configuredUid = configuredAuthorizedUid();
+            if (!configuredUid.has_value() || parsedUid != configuredUid.value()) {
+                std::cerr << "Refusing unauthorized helper UID\n";
+                return 1;
+            }
+            return runServer(argv[2], static_cast<uid_t>(parsedUid));
+        } catch (...) {
+            return 2;
+        }
     }
 
     if (argc == 3 && std::string(argv[1]) == "--restore") {
+        if (!authorizedDirectCaller()) {
+            std::cerr << "Unauthorized caller\n";
+            return 1;
+        }
         return restoreFanControl(argv[2]) ? 0 : 1;
     }
 
@@ -645,6 +853,10 @@ int main(int argc, char *argv[])
     }
 
     try {
+        if (!authorizedDirectCaller()) {
+            std::cerr << "Unauthorized caller\n";
+            return 1;
+        }
         return setFanSpeed(argv[1], std::stod(argv[2])) ? 0 : 1;
     } catch (...) {
         std::cerr << "Invalid percent\n";

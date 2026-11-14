@@ -913,7 +913,9 @@ bool runInstalledPrivilegedHelper(const QStringList &arguments)
     if (!helper.waitForStarted(1000)) {
         return false;
     }
-    if (!helper.waitForFinished(2500)) {
+    // The first M3/M4 manual request may wait several seconds while
+    // thermalmonitord releases system mode after Ftst=1.
+    if (!helper.waitForFinished(10000)) {
         helper.kill();
         helper.waitForFinished(500);
         qWarning() << "Fan helper did not finish in time" << helperPath;
@@ -945,7 +947,7 @@ bool writeAllToSocket(int socketFd, const QByteArray &message)
     return true;
 }
 
-bool sendCommandToHelperServer(const QByteArray &command)
+bool sendCommandToHelperServer(const QByteArray &command, int timeoutSeconds = 10)
 {
     const QByteArray socketPath = privilegedHelperSocketPath().toUtf8();
     if (socketPath.size() >= static_cast<int>(sizeof(sockaddr_un::sun_path))) {
@@ -957,7 +959,9 @@ bool sendCommandToHelperServer(const QByteArray &command)
         return false;
     }
 
-    timeval timeout = {1, 0};
+    // Allow the helper's M3/M4 unlock retry (up to roughly six seconds) to
+    // complete before treating the command as unavailable.
+    timeval timeout = {timeoutSeconds, 0};
     setsockopt(socketFd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
     setsockopt(socketFd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
 
@@ -993,7 +997,7 @@ bool sendCommandToHelperServer(const QByteArray &command)
 
 bool pingHelperServer()
 {
-    return sendCommandToHelperServer(QByteArrayLiteral("PING\n"));
+    return sendCommandToHelperServer(QByteArrayLiteral("PING\n"), 2);
 }
 
 bool sendFanSpeedToHelperServer(const QString &fanId, double percent)
@@ -1004,14 +1008,6 @@ bool sendFanSpeedToHelperServer(const QString &fanId, double percent)
         + QByteArray::number(percent, 'f', 2)
         + QByteArrayLiteral("\n");
     return sendCommandToHelperServer(command);
-}
-
-bool runInstalledHelperSetFanSpeed(const QString &fanId, double percent)
-{
-    return runInstalledPrivilegedHelper({
-        fanId,
-        QString::number(percent, 'f', 2),
-    });
 }
 
 bool sendRestoreFanToHelperServer(const QString &fanId)
@@ -1203,6 +1199,15 @@ void appendSmcFans(QList<FanInfo> &fans, QHash<QString, double> *autoFanModes, Q
                 if (!targetReadable || std::abs(fan.speedPercent - pendingPercent) <= 3.0) {
                     fan.speedPercent = pendingPercent;
                 }
+
+                // On Apple Silicon the SMC's F*Ac reading can remain at the
+                // lowest running-speed value even after a zero target has
+                // stopped the fan. Once our zero-percent command is active,
+                // expose the physical state users observe instead of the
+                // stale/fallback tachometer value.
+                if (pendingPercent <= 0.0) {
+                    fan.rpm = 0;
+                }
             } else if (fan.automatic) {
                 pendingManualFanSpeeds->remove(fan.id);
             }
@@ -1223,6 +1228,30 @@ bool writeFanMode(const AppleSmcReader &smc, int fanIndex, double mode)
     return smc.writeNumber(lowerKey, mode);
 }
 
+bool writeFanModeWithUnlock(const AppleSmcReader &smc, int fanIndex, double mode)
+{
+    if (writeFanMode(smc, fanIndex, mode)) {
+        return true;
+    }
+
+    // M3/M4 thermalmonitord may hold the fan in system mode (3) and reject
+    // the mode write. Ftst=1 temporarily yields control; retry until the
+    // firmware transitions to a writable state.
+    if (mode != 1.0 || !smc.writeNumber(QStringLiteral("Ftst"), 1.0)) {
+        return false;
+    }
+
+    constexpr int kUnlockAttempts = 60;
+    for (int attempt = 0; attempt < kUnlockAttempts; ++attempt) {
+        if (writeFanMode(smc, fanIndex, mode)) {
+            return true;
+        }
+        usleep(100000);
+    }
+
+    return false;
+}
+
 
 bool writeFanSwitchMask(const AppleSmcReader &smc, uint16_t mask)
 {
@@ -1231,6 +1260,13 @@ bool writeFanSwitchMask(const AppleSmcReader &smc, uint16_t mask)
 
 bool writeManualFanSwitch(const AppleSmcReader &smc, int fanIndex, bool manual)
 {
+    // Prefer the per-fan mode key. On newer Apple Silicon generations the
+    // global FS! mask can be readable but reject writes, while F0Md/F0md is
+    // still writable. Keep the mask as a compatibility fallback.
+    if (writeFanModeWithUnlock(smc, fanIndex, manual ? 1.0 : 0.0)) {
+        return true;
+    }
+
     uint16_t mask = 0;
     if (readFanSwitchMask(smc, mask)) {
         const uint16_t fanBit = static_cast<uint16_t>(1U << fanIndex);
@@ -1242,7 +1278,7 @@ bool writeManualFanSwitch(const AppleSmcReader &smc, int fanIndex, bool manual)
         return writeFanSwitchMask(smc, mask);
     }
 
-    return writeFanMode(smc, fanIndex, manual ? 1.0 : 0.0);
+    return false;
 }
 
 bool readFanLimits(const AppleSmcReader &smc, int fanIndex, double &minRpm, double &maxRpm)
@@ -1272,14 +1308,13 @@ void stabilizeSensorReadings(QList<SensorInfo> &current, const QList<SensorInfo>
             continue;
         }
 
-        const double previousTemperature = previousIt->temperatureCelsius;
-        const bool suspiciousDrop = previousTemperature > 20.0
-            && (sensor.temperatureCelsius < 10.0 || previousTemperature - sensor.temperatureCelsius > 25.0);
-        if (suspiciousDrop) {
-            sensor.temperatureCelsius = previousTemperature;
-            sensor.source = previousIt->source;
-        }
-
+        // Do not clamp a valid reading merely because it dropped sharply.
+        // Large drops are normal when a CPU/GPU load ends (for example
+        // 81 C -> 39 C). Clamping them here makes the old value persist on
+        // every scan and leaves automatic fan curves regulating against a
+        // stale temperature. Invalid readings are filtered before this
+        // function; missing sensors are handled below for a limited number
+        // of scans.
         missingScans.remove(sensor.id);
     }
 
@@ -1513,6 +1548,17 @@ MacHardwareBackend::MacHardwareBackend(QObject *parent)
     : IHardwareBackend(parent)
 {
 #ifdef Q_OS_MACOS
+    // The privileged helper owns a short lease. Keep it alive while any fan
+    // is under application control; a crash or forced termination therefore
+    // returns the fans to firmware control automatically.
+    m_helperLeaseTimer.setInterval(5000);
+    connect(&m_helperLeaseTimer, &QTimer::timeout, this, [this] {
+        if (!m_pendingManualFanSpeeds.isEmpty()) {
+            pingHelperServer();
+        }
+    });
+    m_helperLeaseTimer.start();
+
     m_powerConnection = IORegisterForSystemPower(this, &m_powerNotificationPort, &MacHardwareBackend::powerCallback, &m_powerNotifier);
     if (m_powerConnection != IO_OBJECT_NULL && m_powerNotificationPort) {
         m_powerRunLoopSource = IONotificationPortGetRunLoopSource(m_powerNotificationPort);
@@ -1640,6 +1686,9 @@ void MacHardwareBackend::scan()
 
         return collator.compare(left.name, right.name) < 0;
     });
+
+    qDebug() << "macOS hardware scan completed; sensors" << m_sensors.size()
+             << "fans" << m_fans.size();
 #endif
 
     emit hardwareChanged();
@@ -1664,17 +1713,25 @@ bool MacHardwareBackend::setFanSpeed(const QString &fanId, double percent)
     }
 
     const double clampedPercent = std::clamp(percent, 0.0, 100.0);
+    qInfo() << "Requesting macOS fan speed" << fanId << clampedPercent << "%";
     if (sendFanSpeedToHelperServer(fanId, clampedPercent)) {
         m_pendingManualFanSpeeds.insert(fanId, clampedPercent);
         scan();
         return true;
     }
 
-    if (runInstalledHelperSetFanSpeed(fanId, clampedPercent)) {
-        m_pendingManualFanSpeeds.insert(fanId, clampedPercent);
-        scan();
-        return true;
+    // Never use a one-shot privileged helper when the installed lease-backed
+    // helper exists: it cannot observe an app crash. The direct path below is
+    // only compiled in for explicit development builds.
+    if (QFileInfo::exists(installedPrivilegedHelperPath())) {
+        qWarning() << "Fan helper server unavailable; refusing unsafe one-shot manual fan write" << fanId;
+        return false;
     }
+
+#if !defined(THERMVANE_ALLOW_UNLEASED_DIRECT_SMC)
+    qWarning() << "Lease-backed macOS fan helper is required for manual control" << fanId;
+    return false;
+#else
 
     AppleSmcReader smc;
     if (!smc.isOpen()) {
@@ -1687,31 +1744,35 @@ bool MacHardwareBackend::setFanSpeed(const QString &fanId, double percent)
         return false;
     }
 
-    const double targetRpm = minRpm + ((maxRpm - minRpm) * clampedPercent / 100.0);
-
+    const double targetRpm = clampedPercent <= 0.0
+        ? 0.0
+        : minRpm + ((maxRpm - minRpm) * clampedPercent / 100.0);
     const QString modeKey = fanModeKey(smc, fanIndex);
     double currentMode = 0.0;
-    if (!modeKey.isEmpty() && smc.readNumber(modeKey, currentMode) && static_cast<int>(std::lround(currentMode)) != 1) {
+    if (!modeKey.isEmpty() && smc.readNumber(modeKey, currentMode)
+        && static_cast<int>(std::lround(currentMode)) != 1) {
         m_autoFanModes.insert(fanId, currentMode);
     }
 
     smc.writeNumber(QStringLiteral("Ftst"), 1.0);
     const bool modeSet = writeManualFanSwitch(smc, fanIndex, true);
-    const bool targetSet = smc.writeNumber(smcFanKey(fanIndex, QStringLiteral("Tg")), targetRpm);
-    const bool targetSetAfterMode = targetSet || smc.writeNumber(smcFanKey(fanIndex, QStringLiteral("Tg")), targetRpm);
-
-    if (modeSet && targetSetAfterMode) {
+    const bool targetSet = smc.writeNumber(smcFanKey(fanIndex, QStringLiteral("Tg")), targetRpm)
+        || smc.writeNumber(smcFanKey(fanIndex, QStringLiteral("Tg")), targetRpm);
+    if (modeSet && targetSet) {
         m_pendingManualFanSpeeds.insert(fanId, clampedPercent);
         scan();
         return true;
     }
 
-    qWarning() << "Failed to set fan speed; privileged helper is not running or direct SMC write is denied"
-               << "fan" << fanId
-               << "percent" << clampedPercent
-               << "targetRpm" << targetRpm
-               << "modeSet" << modeSet
-               << "targetSet" << targetSetAfterMode;
+    // Transactional rollback for the direct-access development path.
+    if (modeSet) {
+        restoreAutomaticControl(fanId);
+    } else {
+        smc.writeNumber(QStringLiteral("Ftst"), 0.0);
+    }
+    qWarning() << "Direct SMC fan write failed; fan control restored where possible"
+               << fanId << clampedPercent << "%";
+#endif
 #endif
 
     return false;
@@ -1724,6 +1785,8 @@ bool MacHardwareBackend::restoreAutomaticControl(const QString &fanId)
     if (fanIndex < 0) {
         return false;
     }
+
+    qInfo() << "Restoring macOS fan to system automatic control" << fanId;
 
     if (sendRestoreFanToHelperServer(fanId)) {
         m_pendingManualFanSpeeds.remove(fanId);
@@ -1740,6 +1803,20 @@ bool MacHardwareBackend::restoreAutomaticControl(const QString &fanId)
     AppleSmcReader smc;
     if (!smc.isOpen()) {
         return false;
+    }
+
+    const QString currentModeKey = fanModeKey(smc, fanIndex);
+    double currentMode = 0.0;
+    if (!currentModeKey.isEmpty() && smc.readNumber(currentModeKey, currentMode)) {
+        const int mode = static_cast<int>(std::lround(currentMode));
+        if (mode == 0 || mode == 3) {
+            // The firmware already owns the fan. Do not report a failure just
+            // because a redundant mode write is rejected by thermalmonitord.
+            smc.writeNumber(QStringLiteral("Ftst"), 0.0);
+            m_pendingManualFanSpeeds.remove(fanId);
+            scan();
+            return true;
+        }
     }
 
     double autoMode = m_autoFanModes.value(fanId, 0.0);

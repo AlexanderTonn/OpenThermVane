@@ -28,20 +28,43 @@ function firstOutputLine(result)
 function directoryExists(path)
 {
     var nativePath = installer.toNativeSeparators(normalizePath(path));
-    var result = installer.execute("cmd.exe", ["/C", "if exist \"" + nativePath + "\\NUL\" (exit /B 0) else (exit /B 1)"]);
+    var script = "$ErrorActionPreference='Stop';if(Test-Path -LiteralPath "
+        + psSingleQuoted(nativePath) + " -PathType Container){exit 0}else{exit 1}";
+    var result = installer.execute(systemPowerShell(), ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script]);
     return result.length >= 2 && result[1] === 0;
 }
 
 function fileExists(path)
 {
     var nativePath = installer.toNativeSeparators(normalizePath(path));
-    var result = installer.execute("cmd.exe", ["/C", "if exist \"" + nativePath + "\" (exit /B 0) else (exit /B 1)"]);
+    var script = "$ErrorActionPreference='Stop';if(Test-Path -LiteralPath "
+        + psSingleQuoted(nativePath) + " -PathType Leaf){exit 0}else{exit 1}";
+    var result = installer.execute(systemPowerShell(), ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script]);
+    return result.length >= 2 && result[1] === 0;
+}
+
+function posixDirectoryExists(path)
+{
+    var nativePath = installer.toNativeSeparators(normalizePath(path));
+    var result = installer.execute("/usr/bin/test", ["-d", nativePath]);
     return result.length >= 2 && result[1] === 0;
 }
 
 function psSingleQuoted(value)
 {
     return "'" + String(value).replace(/'/g, "''") + "'";
+}
+
+function systemPowerShell()
+{
+    var root = installer.environmentVariable("WINDIR");
+    if (root.length === 0) {
+        root = installer.environmentVariable("SystemRoot");
+    }
+    if (root.length === 0) {
+        return "";
+    }
+    return installer.toNativeSeparators(root + "/System32/WindowsPowerShell/v1.0/powershell.exe");
 }
 
 function findExistingOpenThermVaneDirectory()
@@ -74,7 +97,7 @@ function findExistingOpenThermVaneDirectory()
         "if(Wait-Job $job -Timeout 25){Receive-Job $job|Select-Object -First 1}else{Stop-Job $job};" +
         "Remove-Job $job -Force";
 
-    var result = installer.execute("powershell.exe", [
+    var result = installer.execute(systemPowerShell(), [
         "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",
@@ -154,7 +177,7 @@ function removeExistingTargetDirectory(targetDir)
         "if($markerLeft){exit 2};" +
         "exit 0";
 
-    var result = installer.execute("powershell.exe", [
+    var result = installer.execute(systemPowerShell(), [
         "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",
@@ -220,8 +243,55 @@ function prepareSelectedTarget(widget)
     }
 }
 
+function safePosixTarget(target)
+{
+    var normalized = normalizePath(target);
+    if (normalized.length < 8 || normalized === "/" || normalized === "/Applications"
+        || normalized === "/usr" || normalized === "/opt" || normalized === "/home") {
+        return false;
+    }
+
+    return normalized.slice(-14) === "/OpenThermVane" || normalized.slice(-10) === "/ThermVane";
+}
+
+function preparePosixTarget(widget)
+{
+    var target = selectedTargetDirectory(widget);
+    if (!safePosixTarget(target) || !posixDirectoryExists(target)) {
+        return;
+    }
+
+    if (!installer.hasAdminRights() && !installer.gainAdminRights()) {
+        QMessageBox.critical("ThermVane.AdminRequiredForOverwrite",
+            "ThermVane Installer",
+            "Zum Ersetzen der vorhandenen OpenThermVane-Installation werden Administratorrechte benötigt.",
+            QMessageBox.Ok);
+        return;
+    }
+
+    var result = installer.execute("/bin/rm", ["-rf", installer.toNativeSeparators(target)]);
+    if (result.length < 2 || result[1] !== 0) {
+        QMessageBox.critical("ThermVane.OverwriteFailed",
+            "ThermVane Installer",
+            "Der vorhandene OpenThermVane-Ordner konnte nicht ersetzt werden:\n"
+                + installer.toNativeSeparators(target),
+            QMessageBox.Ok);
+    }
+}
+
 Controller.prototype.TargetDirectoryPageCallback = function()
 {
+    if (systemInfo.productType === "osx" || systemInfo.productType === "linux") {
+        var posixWidget = gui.currentPageWidget();
+        preparePosixTarget(posixWidget);
+        if (posixWidget !== null && posixWidget.TargetDirectoryLineEdit !== undefined) {
+            posixWidget.TargetDirectoryLineEdit.editingFinished.connect(function() {
+                preparePosixTarget(posixWidget);
+            });
+        }
+        return;
+    }
+
     if (systemInfo.productType !== "windows") {
         return;
     }

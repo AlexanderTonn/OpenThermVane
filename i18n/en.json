@@ -8,6 +8,7 @@
     "Curve": "Curve",
     "Dashboard": "Dashboard",
     "Emergency": "Emergency",
+    "Fan speed decrease delay": "Fan speed decrease delay",
     "Fan": "Fan",
     "Fans": "Fans",
     "Manual": "Manual",
@@ -17,6 +18,8 @@
     "Only temperature sensors with readable values are shown.": "Only temperature sensors with readable values are shown.",
     "Quit": "Quit",
     "Safety": "Safety",
+    "Startup": "Startup",
+    "Fan control at startup": "Fan control at startup",
     "Sensor": "Sensor",
     "Sensors": "Sensors",
     "Settings": "Settings",
@@ -32,6 +35,9 @@
     "Export curve profile": "Export curve profile",
     "Import": "Import",
     "Import curve profile": "Import curve profile",
-    "ThermVane curve profile": "ThermVane curve profile"
+    "ThermVane curve profile": "ThermVane curve profile",
+    "Logging": "Logging",
+    "Enable detailed logging": "Enable detailed logging",
+    "Log files are stored by day.": "Log files are stored by day."
   }
 }

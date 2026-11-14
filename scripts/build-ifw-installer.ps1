@@ -4,6 +4,7 @@ param(
     [string]$Configuration = "Release",
     [string]$IfwRoot = "",
     [string]$NbfcInstaller = "",
+    [string]$NbfcSha256 = "",
     [string]$OutputDir = "build/ifw",
     [string]$InstallerName = "ThermVaneInstaller.exe",
     [string]$QtRoot = "D:\QT\6.12.0\llvm-mingw_64"
@@ -94,15 +95,32 @@ New-Item -ItemType Directory -Force -Path $nbfcData | Out-Null
 if ($NbfcInstaller) {
     $payload = Resolve-Path $NbfcInstaller
     $extension = [System.IO.Path]::GetExtension($payload).ToLowerInvariant()
+    $payloadName = $null
     if ($extension -eq ".msi") {
         Write-Host "[ThermVane IFW] Adding NBFC MSI payload..."
-        Copy-Item $payload (Join-Path $nbfcData "nbfc-installer.msi")
+        $payloadName = "nbfc-installer.msi"
     } elseif ($extension -eq ".exe") {
         Write-Host "[ThermVane IFW] Adding NBFC EXE payload..."
-        Copy-Item $payload (Join-Path $nbfcData "nbfc-installer.exe")
+        $payloadName = "nbfc-installer.exe"
     } else {
         throw "NBFC installer must be .msi or .exe"
     }
+    $stagedPayload = Join-Path $nbfcData $payloadName
+    Copy-Item $payload $stagedPayload
+    $sourceHash = (Get-FileHash -LiteralPath $stagedPayload -Algorithm SHA256).Hash.ToUpperInvariant()
+    if ($NbfcSha256) {
+        $payloadHash = $NbfcSha256.Trim().ToUpperInvariant()
+        if ($payloadHash -notmatch '^[0-9A-F]{64}$' -or $payloadHash -ne $sourceHash) {
+            throw "-NbfcSha256 does not match the NBFC payload"
+        }
+    } else {
+        $signature = Get-AuthenticodeSignature -LiteralPath $stagedPayload
+        if ($signature.Status -ne 'Valid') {
+            throw "Unsigned NBFC payload requires -NbfcSha256"
+        }
+        $payloadHash = $sourceHash
+    }
+    Set-Content -LiteralPath (Join-Path $nbfcData "nbfc-installer.sha256") -Value $payloadHash -NoNewline -Encoding ascii
 } else {
     Write-Warning "No -NbfcInstaller provided. NBFC component will install no payload."
 }

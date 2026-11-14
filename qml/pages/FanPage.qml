@@ -7,11 +7,16 @@ import "../controls"
 Item {
     id: root
 
-    function trText(key) { return typeof I18n === "undefined" ? key : I18n.translate(key, I18n.language) }
+    function trText(key) {
+        return typeof I18n === "undefined" || I18n === null
+            ? key : I18n.translate(key, I18n.language)
+    }
 
     property var fanModel
     property var sensorModel
     property var fanCurveModel
+    property var fanController
+    property bool shuttingDown: false
     property var curveAutoFans: ({})
     property string selectedFanId: fanCurveModel && fanCurveModel.selectedFanId !== undefined
                                    ? fanCurveModel.selectedFanId : ""
@@ -21,7 +26,11 @@ Item {
     property var displayedFanSpeeds: ({})
     property var lastAppliedCurveSpeeds: ({})
     property var applyingCurveSpeeds: ({})
+    property var pendingCurveSpeeds: ({})
+    property var curveApplyRetryAt: ({})
+    property var sensorFailSafeState: ({})
     property var defaultSystemAutoAppliedFans: ({})
+    property bool startupFanControlApplied: false
 
     function itemAt(model, row) {
         if (!model || row < 0)
@@ -41,7 +50,11 @@ Item {
             if (fan.fanId === fanId)
                 return i
         }
-        return modelCount(fanModel) > 0 ? 0 : -1
+        // Do not silently substitute the first fan when a previously saved
+        // fan is temporarily absent during an SMC/model refresh. Doing so
+        // can apply that fan's default sensor (usually Battery) to the wrong
+        // physical fan.
+        return -1
     }
 
     function findSensorIndex(sensorId) {
@@ -50,7 +63,10 @@ Item {
             if (sensor.sensorId === sensorId)
                 return i
         }
-        return modelCount(sensorModel) > 0 ? 0 : -1
+        // A saved fan binding is authoritative. Never substitute the first
+        // sensor (usually Battery) while the sensor model is still loading or
+        // when a temporarily unavailable sensor is omitted from the model.
+        return -1
     }
 
     function sensorTemperature(sensorId) {
@@ -69,12 +85,6 @@ Item {
             if (sensorIndex >= 0)
                 sensor = itemAt(sensorModel, sensorIndex)
         }
-
-        if (!sensor.sensorId && sensorCombo && sensorCombo.currentIndex >= 0)
-            sensor = itemAt(sensorModel, sensorCombo.currentIndex)
-
-        if (sensor.sensorId && !selectedSensorId)
-            selectedSensorId = sensor.sensorId
 
         selectedSensorTemperature = sensor.temperature !== undefined && sensor.available !== false
             ? sensor.temperature
@@ -137,8 +147,13 @@ Item {
         const next = Object.assign({}, curveAutoFans)
         if (enabled)
             next[fanId] = true
-        else
+        else {
             delete next[fanId]
+            clearPendingCurveSpeed(fanId)
+            const retry = Object.assign({}, curveApplyRetryAt)
+            delete retry[fanId]
+            curveApplyRetryAt = retry
+        }
         curveAutoFans = next
 
         if (fanCurveModel && fanCurveModel.setCurveAutoForFan)
@@ -150,6 +165,7 @@ Item {
             return false
 
         setCurveAuto(fanId, false)
+        clearPendingCurveSpeed(fanId)
         const failed = Object.assign({}, lastAppliedCurveSpeeds)
         delete failed[fanId]
         lastAppliedCurveSpeeds = failed
@@ -168,9 +184,82 @@ Item {
         applyingCurveSpeeds = next
     }
 
+    function clearPendingCurveSpeed(fanId) {
+        const next = Object.assign({}, pendingCurveSpeeds)
+        delete next[fanId]
+        pendingCurveSpeeds = next
+    }
+
+    function clearSensorFailSafeState(fanId) {
+        if (sensorFailSafeState[fanId] === undefined)
+            return
+        const next = Object.assign({}, sensorFailSafeState)
+        delete next[fanId]
+        sensorFailSafeState = next
+    }
+
+    function handleUnavailableSensor(fanId) {
+        if (shuttingDown)
+            return
+        if (!fanModel || !fanModel.restoreAutomaticControl)
+            return
+
+        const now = Date.now()
+        const previous = sensorFailSafeState[fanId]
+        // Sensor models can be populated a little later than fan models at
+        // startup. Give the selected sensor a short grace period before
+        // handing the fan back to firmware; otherwise one fan can remain in
+        // System Auto while the other already runs the configured curve.
+        if (!previous) {
+            const initial = Object.assign({}, sensorFailSafeState)
+            initial[fanId] = { missingSince: now, nextAttempt: now + 1000 }
+            sensorFailSafeState = initial
+            return
+        }
+        if (now < previous.nextAttempt)
+            return
+
+        if (now - previous.missingSince < 5000) {
+            const waiting = Object.assign({}, sensorFailSafeState)
+            waiting[fanId] = { missingSince: previous.missingSince, nextAttempt: now + 1000 }
+            sensorFailSafeState = waiting
+            return
+        }
+
+        const next = Object.assign({}, sensorFailSafeState)
+        next[fanId] = { missingSince: previous.missingSince, nextAttempt: now + 15000 }
+        sensorFailSafeState = next
+        // Publish the backoff state before the synchronous backend call. The
+        // restore triggers a hardware scan and QML model signals immediately;
+        // without this ordering, re-entrant applyCurve() calls restore the
+        // same fan in a tight loop.
+        const restored = fanModel.restoreAutomaticControl(fanId)
+        if (restored) {
+            forgetLastAppliedCurveSpeed(fanId)
+            clearPendingCurveSpeed(fanId)
+        }
+        console.warn("Selected fan sensor unavailable; system automatic restore requested", fanId,
+                     "restored", restored)
+    }
+
+    function fanSpeedDecreaseDelayMs() {
+        if (fanController && fanController.fanSpeedDecreaseDelayMs !== undefined)
+            return Math.max(0, fanController.fanSpeedDecreaseDelayMs)
+        return 2000
+    }
+
     function disableCurveAutoAfterFailedApply(fanId) {
-        setCurveAuto(fanId, false)
+        clearPendingCurveSpeed(fanId)
         forgetLastAppliedCurveSpeed(fanId)
+
+        // A failed first write is usually a transient startup condition
+        // (thermalmonitord/helper not ready yet). Keep the user's Auto mode
+        // selected and retry with a bounded backoff instead of silently
+        // switching one fan to System Auto.
+        const retry = Object.assign({}, curveApplyRetryAt)
+        retry[fanId] = Date.now() + 2000
+        curveApplyRetryAt = retry
+        console.warn("Curve fan write failed; keeping Auto mode and retrying", fanId)
 
         const fanIndex = findFanIndex(fanId)
         if (fanIndex >= 0) {
@@ -183,7 +272,10 @@ Item {
     function ensureDefaultSystemAutoForFans() {
         if (!fanModel || !fanModel.restoreAutomaticControl)
             return
+        if (startupFanControlApplied || modelCount(fanModel) === 0)
+            return
 
+        const startInCurveAuto = fanCurveModel && fanCurveModel.startupMode === "curve"
         const nextApplied = Object.assign({}, defaultSystemAutoAppliedFans)
         for (let i = 0; i < modelCount(fanModel); ++i) {
             const fan = itemAt(fanModel, i)
@@ -192,31 +284,77 @@ Item {
 
             nextApplied[fan.fanId] = true
             defaultSystemAutoAppliedFans = Object.assign({}, nextApplied)
-            if (fan.supportsFirmwareControl === true || fan.supportsControl === true)
-                requestSystemAuto(fan.fanId)
+            if (startInCurveAuto) {
+                setCurveAuto(fan.fanId, true)
+                applyCurve(fan.fanId)
+            } else if (fan.supportsFirmwareControl === true || fan.supportsControl === true) {
+                // Do not perform a redundant SMC restore on a fan that is
+                // already owned by the firmware. The restore call causes a
+                // synchronous hardware scan during startup and can briefly
+                // feed an unstable sensor reading into the emergency policy.
+                if (fan.automatic !== true)
+                    requestSystemAuto(fan.fanId)
+                else
+                    setCurveAuto(fan.fanId, false)
+            }
         }
         defaultSystemAutoAppliedFans = nextApplied
+        startupFanControlApplied = true
     }
 
     function applyCurve(fanId) {
+        if (shuttingDown)
+            return
         if (!fanModel || !fanModel.setManualSpeed || !fanCurveModel)
             return
         const fanIndex = findFanIndex(fanId)
         if (fanIndex < 0 || itemAt(fanModel, fanIndex).supportsControl !== true)
             return
 
-        const sensorId = fanCurveModel.sensorIdForFan ? fanCurveModel.sensorIdForFan(fanId) : selectedSensorId
-        const temperature = sensorTemperature(sensorId)
-        if (temperature <= 0)
+        const retryAt = curveApplyRetryAt[fanId]
+        if (retryAt !== undefined && Date.now() < retryAt)
             return
 
-        const speed = fanCurveModel.speedForFanTemperature
+        const sensorId = fanCurveModel.sensorIdForFan ? fanCurveModel.sensorIdForFan(fanId) : selectedSensorId
+        const temperature = sensorTemperature(sensorId)
+        if (temperature <= 0) {
+            handleUnavailableSensor(fanId)
+            return
+        }
+        clearSensorFailSafeState(fanId)
+
+        let speed = fanCurveModel.speedForFanTemperature
                     ? fanCurveModel.speedForFanTemperature(fanId, temperature)
                     : fanCurveModel.speedForTemperature(temperature)
         if (lastAppliedCurveSpeeds[fanId] !== undefined && Math.abs(lastAppliedCurveSpeeds[fanId] - speed) < 0.5)
             return
         if (applyingCurveSpeeds[fanId] === true)
             return
+
+        const currentSpeed = displayedSpeedForFan(fanId)
+        const decreaseDelay = fanSpeedDecreaseDelayMs()
+        if (decreaseDelay > 0 && currentSpeed >= 0 && speed < currentSpeed - 0.5) {
+            const now = Date.now()
+            const pending = pendingCurveSpeeds[fanId]
+            if (!pending) {
+                const nextPending = Object.assign({}, pendingCurveSpeeds)
+                nextPending[fanId] = { speed: speed, deadline: now + decreaseDelay }
+                pendingCurveSpeeds = nextPending
+                return
+            }
+
+            if (now < pending.deadline) {
+                const updatedPending = Object.assign({}, pendingCurveSpeeds)
+                updatedPending[fanId] = { speed: speed, deadline: pending.deadline }
+                pendingCurveSpeeds = updatedPending
+                return
+            }
+
+            speed = pending.speed
+            clearPendingCurveSpeed(fanId)
+        } else {
+            clearPendingCurveSpeed(fanId)
+        }
 
         let nextApplying = Object.assign({}, applyingCurveSpeeds)
         nextApplying[fanId] = true
@@ -227,6 +365,10 @@ Item {
             nextApplied[fanId] = speed
             lastAppliedCurveSpeeds = nextApplied
             setDisplayedSpeedForFan(fanId, speed)
+
+            const retry = Object.assign({}, curveApplyRetryAt)
+            delete retry[fanId]
+            curveApplyRetryAt = retry
         } else {
             disableCurveAutoAfterFailedApply(fanId)
         }
@@ -234,20 +376,13 @@ Item {
         cancelApplyingCurveSpeed(fanId)
     }
 
-    function defaultSensorId() {
-        for (let i = 0; i < modelCount(sensorModel); ++i) {
-            const sensor = itemAt(sensorModel, i)
-            if (sensor.sensorId && sensor.available !== false)
-                return sensor.sensorId
-        }
-        return ""
-    }
-
     function initializeSelection() {
         if (!fanCurveModel)
             return
 
         let fanIndex = findFanIndex(selectedFanId)
+        if (fanIndex < 0 && !selectedFanId && modelCount(fanModel) > 0)
+            fanIndex = 0
         if (fanIndex >= 0) {
             const fan = itemAt(fanModel, fanIndex)
             if (fan.fanId !== selectedFanId) {
@@ -257,27 +392,27 @@ Item {
             fanCombo.currentIndex = fanIndex
         }
 
-        let sensorId = fanCurveModel.sensorIdForFan ? fanCurveModel.sensorIdForFan(selectedFanId) : selectedSensorId
-        if (!sensorId) {
-            sensorId = selectedSensorId || defaultSensorId()
-            if (sensorId && fanCurveModel.setSensorIdForFan)
-                fanCurveModel.setSensorIdForFan(selectedFanId, sensorId)
-        }
+        const sensorId = fanCurveModel.sensorIdForFan
+            ? fanCurveModel.sensorIdForFan(selectedFanId) : ""
         let sensorIndex = findSensorIndex(sensorId)
         if (sensorIndex >= 0) {
             const sensor = itemAt(sensorModel, sensorIndex)
-            if (sensor.sensorId !== sensorId && fanCurveModel.setSensorIdForFan)
-                fanCurveModel.setSensorIdForFan(selectedFanId, sensor.sensorId)
             selectedSensorId = sensor.sensorId
             sensorCombo.currentIndex = sensorIndex
+        } else {
+            // Preserve the exact saved ID even if its sensor is temporarily
+            // unavailable. An empty ID remains empty until the user selects a
+            // sensor explicitly; there is intentionally no fallback.
+            selectedSensorId = sensorId || ""
+            sensorCombo.currentIndex = -1
         }
         updateSelectedSensorTemperature()
     }
 
     Timer {
-        interval: 1000
+        interval: 250
         repeat: true
-        running: true
+        running: !root.shuttingDown
         onTriggered: {
             for (let fanId in root.curveAutoFans)
                 root.applyCurve(fanId)
@@ -367,17 +502,14 @@ Item {
                                 return
                             root.selectedFanId = fan.fanId
                             fanCurveModel.selectedFanId = fan.fanId
-                            let sensorId = fanCurveModel.sensorIdForFan ? fanCurveModel.sensorIdForFan(fan.fanId) : ""
-                            if (!sensorId) {
-                                sensorId = root.selectedSensorId || root.defaultSensorId()
-                                if (sensorId && fanCurveModel.setSensorIdForFan)
-                                    fanCurveModel.setSensorIdForFan(fan.fanId, sensorId)
-                            }
+                            const sensorId = fanCurveModel.sensorIdForFan
+                                ? fanCurveModel.sensorIdForFan(fan.fanId) : ""
                             const sensorIndex = root.findSensorIndex(sensorId)
                             if (sensorIndex >= 0)
                                 sensorCombo.currentIndex = sensorIndex
-                            root.selectedSensorId = sensorIndex >= 0
-                                ? root.itemAt(sensorModel, sensorIndex).sensorId : sensorId
+                            root.selectedSensorId = sensorId
+                            if (sensorIndex < 0)
+                                sensorCombo.currentIndex = -1
                             root.updateSelectedSensorTemperature()
                         }
                     }
@@ -406,17 +538,29 @@ Item {
                         }
                     }
 
-                    Button {
-                        text: trText("Import")
-                        Layout.preferredWidth: 112
-                        Layout.minimumWidth: 104
+                    ToolButton {
+                        icon.source: "qrc:/assets/icons/import.svg"
+                        icon.width: 22
+                        icon.height: 22
+                        display: AbstractButton.IconOnly
+                        Layout.preferredWidth: 48
+                        Layout.minimumWidth: 44
+                        ToolTip.visible: hovered
+                        ToolTip.text: trText("Import")
+                        Accessible.name: trText("Import")
                         onClicked: importCurveDialog.open()
                     }
 
-                    Button {
-                        text: trText("Export")
-                        Layout.preferredWidth: 112
-                        Layout.minimumWidth: 104
+                    ToolButton {
+                        icon.source: "qrc:/assets/icons/export.svg"
+                        icon.width: 22
+                        icon.height: 22
+                        display: AbstractButton.IconOnly
+                        Layout.preferredWidth: 48
+                        Layout.minimumWidth: 44
+                        ToolTip.visible: hovered
+                        ToolTip.text: trText("Export")
+                        Accessible.name: trText("Export")
                         onClicked: exportCurveDialog.open()
                     }
                 }
@@ -481,6 +625,7 @@ Item {
         }
         function onSelectedSensorIdChanged() {
             root.selectedSensorId = fanCurveModel.selectedSensorId
+            root.initializeSelection()
         }
         function onCurveAutoFansChanged() {
             root.syncCurveAutoFromModel()

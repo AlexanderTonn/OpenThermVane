@@ -5,7 +5,10 @@ import QtQuick.Layouts
 Rectangle {
     id: root
 
-    function trText(key) { return typeof I18n === "undefined" ? key : I18n.translate(key, I18n.language) }
+    function trText(key) {
+        return typeof I18n === "undefined" || I18n === null
+            ? key : I18n.translate(key, I18n.language)
+    }
 
     property string fanId
     property string name
@@ -19,6 +22,7 @@ Rectangle {
     property bool supportsRpm: false
     property bool supportsFirmwareControl: false
     property bool compact: false
+    readonly property bool manualMode: !root.curveMode && !root.systemAutoMode
 
     signal manualSpeedRequested(real speed)
     signal manualModeRequested(real speed)
@@ -33,13 +37,15 @@ Rectangle {
     Component.onCompleted: displayedSpeedPercent = speedPercent
 
     width: 300
-    height: 250
+    implicitHeight: contentLayout.implicitHeight + 24
+    height: implicitHeight
 
     radius: 8
     color: "#1b1f29"
     border.color: supportsControl ? "#2d3442" : "#4b3f2d"
 
     ColumnLayout {
+        id: contentLayout
         visible: true
         anchors.fill: parent
         anchors.margins: 12
@@ -70,11 +76,6 @@ Rectangle {
             spacing: 5
             Layout.fillWidth: true
 
-            Label {
-                text: root.systemAutoMode ? trText("System Auto") : (root.curveMode ? trText("Auto") : trText("Manual"))
-                opacity: 0.8
-            }
-
             ProgressBar {
                 from: 0
                 to: 100
@@ -91,7 +92,7 @@ Rectangle {
 
         PercentageSlider {
             id: sliderControl
-            visible: !root.compact
+            visible: !root.compact && root.manualMode
             value: root.displayedSpeedPercent
             enabledControl: root.supportsControl && !root.curveMode && !root.systemAutoMode
             Layout.fillWidth: true

@@ -9,6 +9,12 @@ on:
     tags:
       - 'v*'
 
+# Keep only the newest build for each branch or tag. A later push replaces an
+# older in-progress installer build instead of publishing stale artifacts.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   QT_VERSION: 6.10.0
   IFW_TOOL_ID: qt.tools.ifw.47

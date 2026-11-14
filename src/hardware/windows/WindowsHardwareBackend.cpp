@@ -11,7 +11,6 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSet>
-#include <QStandardPaths>
 #include <QStringList>
 #include <QTimer>
 
@@ -38,9 +37,30 @@ namespace {
 constexpr int kPowershellTimeoutMs = 3500;
 constexpr qint64 kMinimumScanIntervalMs = 2500;
 
+QString systemDirectory()
+{
+#if defined(_WIN32)
+    wchar_t systemDirectory[MAX_PATH] = {};
+    const UINT length = GetSystemDirectoryW(systemDirectory, MAX_PATH);
+    if (length == 0 || length >= MAX_PATH) {
+        return {};
+    }
+    return QString::fromWCharArray(systemDirectory, static_cast<int>(length));
+#else
+    return {};
+#endif
+}
+
 QString powershellExe()
 {
-    return QStringLiteral("powershell.exe");
+    const QString root = systemDirectory();
+    return root.isEmpty() ? QString() : root + QStringLiteral("/WindowsPowerShell/v1.0/powershell.exe");
+}
+
+QString systemExecutable(const QString &name)
+{
+    const QString root = systemDirectory();
+    return root.isEmpty() ? QString() : root + QLatin1Char('/') + name;
 }
 
 QString powershellString(QString value)
@@ -64,8 +84,13 @@ void hideProcessConsoleWindow(QProcess &process)
 
 bool runPowershell(const QString &script, QString *output = nullptr)
 {
+    const QString program = powershellExe();
+    if (program.isEmpty() || !QFileInfo(program).isFile()) {
+        return false;
+    }
+
     QProcess process;
-    process.setProgram(powershellExe());
+    process.setProgram(program);
     process.setArguments({
         QStringLiteral("-NoProfile"),
         QStringLiteral("-ExecutionPolicy"),
@@ -120,15 +145,11 @@ bool runProcess(const QString &program, const QStringList &arguments, int timeou
 
 QString findNbfcExecutable()
 {
-    const QString fromPath = QStandardPaths::findExecutable(QStringLiteral("nbfc.exe"));
-    if (!fromPath.isEmpty()) {
-        return fromPath;
-    }
-
+    // Only trust machine-wide installation roots. PATH and LOCALAPPDATA are
+    // user-controlled and permit executable path hijacking.
     const QStringList programRoots = {
         qEnvironmentVariable("ProgramFiles"),
         qEnvironmentVariable("ProgramFiles(x86)"),
-        qEnvironmentVariable("LOCALAPPDATA"),
     };
     const QStringList relativeCandidates = {
         QStringLiteral("NoteBook FanControl/nbfc.exe"),
@@ -1078,14 +1099,14 @@ void WindowsHardwareBackend::startNbfcService()
     const QString serviceName = QStringLiteral("NoteBookFanControlService");
 
     if (!async) {
-        runProcess(QStringLiteral("sc.exe"), {QStringLiteral("start"), serviceName}, 5000);
+        runProcess(systemExecutable(QStringLiteral("sc.exe")), {QStringLiteral("start"), serviceName}, 5000);
         runNbfcCommand(m_nbfcPath, {QStringLiteral("start"), QStringLiteral("-e")}, 5000);
         ensureNbfcConfigured();
         return;
     }
 
     QProcess *serviceProcess = new QProcess(this);
-    serviceProcess->setProgram(QStringLiteral("sc.exe"));
+    serviceProcess->setProgram(systemExecutable(QStringLiteral("sc.exe")));
     serviceProcess->setArguments({QStringLiteral("start"), serviceName});
     hideProcessConsoleWindow(*serviceProcess);
     connect(serviceProcess, &QProcess::finished, serviceProcess, &QObject::deleteLater);

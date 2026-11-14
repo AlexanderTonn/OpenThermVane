@@ -5,7 +5,10 @@ import QtQuick.Shapes
 Item {
     id: root
 
-    function trText(key) { return typeof I18n === "undefined" ? key : I18n.translate(key, I18n.language) }
+    function trText(key) {
+        return typeof I18n === "undefined" || I18n === null
+            ? key : I18n.translate(key, I18n.language)
+    }
 
     property var curveModel
     property var fanModel

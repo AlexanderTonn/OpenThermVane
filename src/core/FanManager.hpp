@@ -25,6 +25,10 @@ public:
 
     Q_INVOKABLE bool setManualSpeed(const QString &fanId, double percent);
     Q_INVOKABLE bool restoreAutomaticControl(const QString &fanId);
+    // Release every fan override when the application is shutting down.
+    // This intentionally bypasses the emergency policy: the firmware must
+    // regain control even when the last state was an emergency override.
+    bool restoreAllAutomaticControl();
     bool setEmergencyFullSpeed(bool active);
 
 signals:
@@ -41,6 +45,8 @@ private:
     QHash<QString, double> m_manualSpeedOverrides;
     QSet<QString> m_emergencyControlledFans;
     bool m_emergencyActive = false;
+    bool m_refreshing = false;
+    bool m_applyingEmergencySpeed = false;
 };
 
 } // namespace thermvane

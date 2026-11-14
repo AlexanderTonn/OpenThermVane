@@ -20,12 +20,16 @@
 #include "models/SensorModel.hpp"
 
 #include <QObject>
+#include <QElapsedTimer>
+#include <QTimer>
 
 namespace thermvane {
 
 class Application final : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(bool shuttingDown READ shuttingDown NOTIFY shuttingDownChanged)
+    Q_PROPERTY(bool backendReady READ backendReady NOTIFY backendReadyChanged)
 
 public:
     explicit Application(QObject *parent = nullptr);
@@ -35,9 +39,18 @@ public:
     FanCurveModel *fanCurveModel();
     FanController *fanController();
     QList<SensorInfo> sensors() const;
+    bool shuttingDown() const;
+    bool backendReady() const;
+
+    Q_INVOKABLE bool restoreFansToAutomatic();
+
+signals:
+    void shuttingDownChanged();
+    void backendReadyChanged();
 
 private:
     void evaluateEmergencyPolicy();
+    void checkBackendReady();
 
     MockHardwareBackend m_backend;
 #if defined(Q_OS_LINUX)
@@ -55,6 +68,15 @@ private:
     FanCurveModel m_fanCurveModel;
     bool m_emergencyActive = false;
     bool m_evaluatingEmergencyPolicy = false;
+    bool m_shuttingDown = false;
+    bool m_shutdownRestoreCompleted = false;
+    int m_highTemperatureSamples = 0;
+    QElapsedTimer m_startupGraceTimer;
+    QTimer m_backendReadyTimer;
+    int m_lastBackendFanCount = -1;
+    int m_lastBackendSensorCount = -1;
+    int m_backendStableSamples = 0;
+    bool m_backendReady = false;
 };
 
 } // namespace thermvane

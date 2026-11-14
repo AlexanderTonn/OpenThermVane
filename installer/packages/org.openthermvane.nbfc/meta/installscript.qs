@@ -2,6 +2,28 @@ function Component()
 {
 }
 
+function systemPowerShell()
+{
+    var root = installer.environmentVariable("WINDIR");
+    if (root.length === 0) {
+        root = installer.environmentVariable("SystemRoot");
+    }
+    return root.length === 0
+        ? ""
+        : installer.toNativeSeparators(root + "/System32/WindowsPowerShell/v1.0/powershell.exe");
+}
+
+function systemCommandProcessor()
+{
+    var root = installer.environmentVariable("WINDIR");
+    if (root.length === 0) {
+        root = installer.environmentVariable("SystemRoot");
+    }
+    return root.length === 0
+        ? ""
+        : installer.toNativeSeparators(root + "/System32/cmd.exe");
+}
+
 Component.prototype.createOperations = function()
 {
     component.createOperations();
@@ -11,7 +33,7 @@ Component.prototype.createOperations = function()
     }
 
     component.addElevatedOperation("Execute",
-        "powershell.exe",
+        systemPowerShell(),
         "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",
@@ -19,6 +41,6 @@ Component.prototype.createOperations = function()
         "@TargetDir@/nbfc/install-nbfc.ps1",
         "@TargetDir@",
         "UNDOEXECUTE",
-        "cmd", "/C",
+        systemCommandProcessor(), "/C",
         "if exist \"%ProgramFiles%\\NoteBook FanControl\\unins000.exe\" \"%ProgramFiles%\\NoteBook FanControl\\unins000.exe\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART");
 }

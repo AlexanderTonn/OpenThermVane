@@ -15,7 +15,7 @@ if(NOT DEFINED DMG_OUTPUT_DIR OR DMG_OUTPUT_DIR STREQUAL "")
 endif()
 
 if(NOT DEFINED PROJECT_VERSION OR PROJECT_VERSION STREQUAL "")
-    set(PROJECT_VERSION "0.1.0")
+    set(PROJECT_VERSION "1.1.0")
 endif()
 
 set(INSTALL_ROOT "${DMG_OUTPUT_DIR}/install-root")
@@ -55,12 +55,21 @@ endif()
 
 set(THERMVANE_APP_BUNDLE "${INSTALL_ROOT}/ThermVane.app")
 set(THERMVANE_HELPER "${INSTALL_ROOT}/bin/ThermVaneFanHelper")
+set(THERMVANE_HELPER_INSTALL_SCRIPT "${SOURCE_DIR}/scripts/macos/install-fan-helper.sh")
+set(THERMVANE_HELPER_UNINSTALL_SCRIPT "${SOURCE_DIR}/scripts/macos/uninstall-fan-helper.sh")
 if(NOT EXISTS "${THERMVANE_APP_BUNDLE}")
     message(FATAL_ERROR "ThermVane.app was not installed to ${THERMVANE_APP_BUNDLE}")
 endif()
 if(NOT EXISTS "${THERMVANE_HELPER}")
     message(FATAL_ERROR "ThermVaneFanHelper was not installed to ${THERMVANE_HELPER}")
 endif()
+foreach(THERMVANE_HELPER_SCRIPT IN ITEMS
+    "${THERMVANE_HELPER_INSTALL_SCRIPT}"
+    "${THERMVANE_HELPER_UNINSTALL_SCRIPT}")
+    if(NOT EXISTS "${THERMVANE_HELPER_SCRIPT}")
+        message(FATAL_ERROR "Required macOS helper script is missing: ${THERMVANE_HELPER_SCRIPT}")
+    endif()
+endforeach()
 
 execute_process(
     COMMAND "${MACDEPLOYQT_EXECUTABLE}" "${THERMVANE_APP_BUNDLE}"
@@ -73,18 +82,61 @@ file(REMOVE_RECURSE "${THERMVANE_APP_BUNDLE}/Contents/PlugIns/sqldrivers")
 
 file(COPY "${THERMVANE_APP_BUNDLE}" DESTINATION "${PKG_PAYLOAD_ROOT}/Applications")
 file(COPY_FILE "${THERMVANE_HELPER}" "${PKG_SCRIPTS_DIR}/ThermVaneFanHelper")
-file(COPY_FILE "${SOURCE_DIR}/scripts/macos/install-fan-helper.sh" "${PKG_SCRIPTS_DIR}/install-fan-helper.sh")
-file(COPY_FILE "${SOURCE_DIR}/scripts/macos/uninstall-fan-helper.sh" "${PKG_SCRIPTS_DIR}/uninstall-fan-helper.sh")
+file(COPY_FILE "${THERMVANE_HELPER_INSTALL_SCRIPT}" "${PKG_SCRIPTS_DIR}/install-fan-helper.sh")
+file(COPY_FILE "${THERMVANE_HELPER_UNINSTALL_SCRIPT}" "${PKG_SCRIPTS_DIR}/uninstall-fan-helper.sh")
+
+file(WRITE "${PKG_SCRIPTS_DIR}/preinstall" [[#!/usr/bin/env bash
+set -euo pipefail
+
+# Stop the old app/helper before replacing the installation. All paths are
+# fixed, known ThermVane locations; never derive a deletion target from user
+# input in this privileged package script.
+/usr/bin/pkill -x ThermVane >/dev/null 2>&1 || true
+/bin/launchctl bootout system /Library/LaunchDaemons/com.openthermvane.fanhelper.plist >/dev/null 2>&1 || true
+/bin/rm -f \
+    /tmp/thermvane-fan-helper.sock \
+    /Library/LaunchDaemons/com.openthermvane.fanhelper.plist \
+    /Library/PrivilegedHelperTools/ThermVaneFanHelper \
+    "/Library/Application Support/OpenThermVane/fan-helper.uid"
+
+# Remove the old direct app bundle and legacy QtIFW folders. The folder
+# variants are deleted only when they contain ThermVane/IFW markers.
+/bin/rm -rf -- /Applications/ThermVane.app
+for legacy in /Applications/OpenThermVane /Applications/ThermVane; do
+    if [[ -d "${legacy}" ]]; then
+        for marker in \
+            ThermVane.app OpenThermVane.app ThermVaneMaintenanceTool \
+            maintenancetool maintenancetool.exe components.xml maintenance.dat \
+            bin/ThermVane bin/OpenThermVane; do
+            if [[ -e "${legacy}/${marker}" ]]; then
+                /bin/rm -rf -- "${legacy}"
+                break
+            fi
+        done
+    fi
+done
+exit 0
+]])
 
 file(WRITE "${PKG_SCRIPTS_DIR}/postinstall" [[#!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 /bin/bash "${SCRIPT_DIR}/install-fan-helper.sh" "${SCRIPT_DIR}/ThermVaneFanHelper"
+
+# Keep root-owned copies for repair/uninstall workflows after Installer.app
+# removes the package's temporary script directory.
+SUPPORT_DIR="/Library/Application Support/OpenThermVane"
+/usr/bin/install -d -o root -g wheel -m 755 "${SUPPORT_DIR}"
+/usr/bin/install -o root -g wheel -m 755 \
+    "${SCRIPT_DIR}/install-fan-helper.sh" "${SUPPORT_DIR}/install-fan-helper.sh"
+/usr/bin/install -o root -g wheel -m 755 \
+    "${SCRIPT_DIR}/uninstall-fan-helper.sh" "${SUPPORT_DIR}/uninstall-fan-helper.sh"
 exit 0
 ]])
 
 file(CHMOD
     "${PKG_SCRIPTS_DIR}/ThermVaneFanHelper"
+    "${PKG_SCRIPTS_DIR}/preinstall"
     "${PKG_SCRIPTS_DIR}/install-fan-helper.sh"
     "${PKG_SCRIPTS_DIR}/uninstall-fan-helper.sh"
     "${PKG_SCRIPTS_DIR}/postinstall"
@@ -124,7 +176,7 @@ if(NOT productbuild_result EQUAL 0)
     message(FATAL_ERROR "productbuild failed")
 endif()
 
-file(WRITE "${DMG_ROOT}/README.txt" "Open ThermVane.pkg to install ThermVane.app into /Applications and install the fan helper.\n")
+file(WRITE "${DMG_ROOT}/README.txt" "Open ThermVane.pkg to install ThermVane.app into /Applications. The package replaces legacy OpenThermVane installations and installs the privileged fan helper plus repair/uninstall scripts.\n")
 
 execute_process(
     COMMAND /usr/bin/find "${DMG_ROOT}" -name "._*" -type f -delete
