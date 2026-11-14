@@ -120,6 +120,14 @@ exit 0
 
 file(WRITE "${PKG_SCRIPTS_DIR}/postinstall" [[#!/usr/bin/env bash
 set -euo pipefail
+
+LOG_FILE="/var/log/thermvane-installer-postinstall.log"
+/usr/bin/touch "${LOG_FILE}"
+/usr/sbin/chown root:wheel "${LOG_FILE}"
+/bin/chmod 600 "${LOG_FILE}"
+exec >>"${LOG_FILE}" 2>&1
+
+echo "ThermVane postinstall started: $(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 /bin/bash "${SCRIPT_DIR}/install-fan-helper.sh" "${SCRIPT_DIR}/ThermVaneFanHelper"
 
@@ -131,6 +139,7 @@ SUPPORT_DIR="/Library/Application Support/OpenThermVane"
     "${SCRIPT_DIR}/install-fan-helper.sh" "${SUPPORT_DIR}/install-fan-helper.sh"
 /usr/bin/install -o root -g wheel -m 755 \
     "${SCRIPT_DIR}/uninstall-fan-helper.sh" "${SUPPORT_DIR}/uninstall-fan-helper.sh"
+echo "ThermVane postinstall completed: $(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')"
 exit 0
 ]])
 

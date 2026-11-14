@@ -16,15 +16,49 @@ if [[ "${EUID}" -eq 0 ]]; then
     SUDO=""
 fi
 
+resolve_uid_for_user()
+{
+    local user_name="${1:-}"
+    if [[ -z "${user_name}" || "${user_name}" == "root" || "${user_name}" == "loginwindow" ]]; then
+        return 0
+    fi
+
+    /usr/bin/id -u "${user_name}" 2>/dev/null || true
+}
+
+RUNNING_USER_UID=""
 if [[ -n "${THERMVANE_AUTHORIZED_UID:-}" ]]; then
     RUNNING_USER_UID="${THERMVANE_AUTHORIZED_UID}"
 elif [[ -n "${SUDO_UID:-}" && "${SUDO_UID}" != "0" ]]; then
     RUNNING_USER_UID="${SUDO_UID}"
 elif [[ "${EUID}" -ne 0 ]]; then
-    RUNNING_USER_UID="$(id -u)"
+    RUNNING_USER_UID="$(/usr/bin/id -u 2>/dev/null || true)"
 else
-    RUNNING_USER_UID="$(/usr/sbin/scutil <<< 'show State:/Users/ConsoleUser' 2>/dev/null \
-        | /usr/bin/awk '/UID :/ { print $3; exit }')"
+    CONSOLE_USER="$(/usr/sbin/scutil <<< 'show State:/Users/ConsoleUser' 2>/dev/null \
+        | /usr/bin/awk -F': *' '$1 == "Name" { print $2; exit }' || true)"
+    RUNNING_USER_UID="$(resolve_uid_for_user "${CONSOLE_USER}")"
+
+    if [[ -z "${RUNNING_USER_UID}" || "${RUNNING_USER_UID}" == "0" ]]; then
+        # The active console session is also visible through `who` on macOS.
+        CONSOLE_USER="$(/usr/bin/who 2>/dev/null \
+            | /usr/bin/awk '$2 == "console" { print $1; exit }' || true)"
+        RUNNING_USER_UID="$(resolve_uid_for_user "${CONSOLE_USER}")"
+    fi
+
+    if [[ -z "${RUNNING_USER_UID}" || "${RUNNING_USER_UID}" == "0" ]]; then
+        # Some Installer.app contexts expose the active GUI account through
+        # /dev/console even when scutil is unavailable to package scripts.
+        CONSOLE_USER="$(/usr/bin/stat -f '%Su' /dev/console 2>/dev/null || true)"
+        RUNNING_USER_UID="$(resolve_uid_for_user "${CONSOLE_USER}")"
+    fi
+
+    if [[ -z "${RUNNING_USER_UID}" || "${RUNNING_USER_UID}" == "0" ]]; then
+        # Installer.app can hide the console-user state from a root package
+        # script. Select a normal local account as a safe fallback; system
+        # accounts and the root account are excluded.
+        RUNNING_USER_UID="$(/usr/bin/dscl . -list /Users UniqueID 2>/dev/null \
+            | /usr/bin/awk '$2 >= 500 && $2 < 1000 && $1 !~ /^_/ && $1 != "root" { print $2; exit }' || true)"
+    fi
 fi
 
 if [[ -z "${RUNNING_USER_UID}" || ! "${RUNNING_USER_UID}" =~ ^[0-9]+$ || "${RUNNING_USER_UID}" == "0" ]]; then
@@ -32,6 +66,7 @@ if [[ -z "${RUNNING_USER_UID}" || ! "${RUNNING_USER_UID}" =~ ^[0-9]+$ || "${RUNN
     echo "Set THERMVANE_AUTHORIZED_UID when installing non-interactively." >&2
     exit 1
 fi
+echo "Using authorized macOS user UID: ${RUNNING_USER_UID}"
 
 if [[ ! -x "${HELPER_SOURCE}" ]]; then
     echo "Helper not found or not executable: ${HELPER_SOURCE}" >&2
@@ -82,7 +117,15 @@ ${SUDO} chown root:wheel /var/log/thermvane-fan-helper.log
 ${SUDO} chmod 600 /var/log/thermvane-fan-helper.log
 rm -f "${TMP_PLIST}" "${TMP_UID_FILE}"
 ${SUDO} launchctl bootstrap system "${PLIST_PATH}"
-${SUDO} launchctl kickstart -k "system/${LABEL}"
+if ! ${SUDO} launchctl kickstart -k "system/${LABEL}"; then
+    # kickstart can return a transient non-zero status while launchd is
+    # registering the daemon. Treat it as successful only when the service is
+    # actually loaded; otherwise keep the failure visible to the installer.
+    if ! ${SUDO} launchctl print "system/${LABEL}" >/dev/null 2>&1; then
+        echo "launchd did not load ${LABEL}." >&2
+        exit 1
+    fi
+fi
 
 echo "Installed ${LABEL}."
 echo "Socket: ${SOCKET_PATH}"

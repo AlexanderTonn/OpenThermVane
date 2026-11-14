@@ -3,6 +3,8 @@ name: Installer Builds
 on:
   workflow_dispatch:
   pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
@@ -15,8 +17,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 env:
-  QT_VERSION: 6.10.0
+  QT_VERSION: 6.12.0
   IFW_TOOL_ID: qt.tools.ifw.47
   AQT_BASE_URL: https://download.qt.io
 

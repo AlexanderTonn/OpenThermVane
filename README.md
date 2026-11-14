@@ -1,18 +1,80 @@
 # OpenThermVane
 
-OpenThermVane is a Qt 6/QML app for fan and thermal monitoring/control.
+<p align="center">
+  <a href="https://github.com/AlexanderTonn/OpenThermVane/actions/workflows/installer-builds.yml">
+    <img src="https://github.com/AlexanderTonn/OpenThermVane/actions/workflows/installer-builds.yml/badge.svg?branch=main" alt="Installer Builds">
+  </a>
+  <img src="https://img.shields.io/badge/version-1.1.0-55d6be" alt="Version 1.1.0">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-5865f2" alt="Platforms">
+  <img src="https://img.shields.io/badge/Qt-6.5%2B-41cd52?logo=qt&logoColor=white" alt="Qt 6.5 or newer">
+  <img src="https://img.shields.io/badge/CMake-3.24%2B-064f8c?logo=cmake&logoColor=white" alt="CMake 3.24 or newer">
+  <img src="https://img.shields.io/github/last-commit/AlexanderTonn/OpenThermVane" alt="Last commit">
+</p>
 
-Current focus:
+OpenThermVane is a Qt 6/QML desktop app for temperature monitoring and fan control.
 
-- QML UI for dashboard, fans, sensors, and settings
-- Apple Silicon temperature sensor detection
-- MacBook fan RPM display and manual control
-- fan curves per fan and selected temperature sensor
-- mock backend for development without hardware access
-- prepared backend folders for Linux, Windows, and macOS
-- Qt translation files for German and English
+## Features
 
-## Build
+- Apple Silicon SMC temperature sensors, CPU/GPU averages and MacBook fan RPM
+- Per-fan sensor selection and temperature-based curves
+- Manual, curve-based Auto and firmware System Auto control
+- Live fan position on the curve, `.otvc` curve import/export and daily logging
+- German/English UI, startup splash and automatic fan restore on exit/sleep
+
+## Screenshots
+
+<img src="assets/screenshots/dashboard.png" alt="Dashboard" width="600" >
+
+
+<img src="assets/screenshots/fans.png" alt="Fans and curve editor" width="600" >
+
+## Installers
+
+GitHub Actions builds the current installers for `main`:
+
+- macOS: native `.dmg`
+- Windows: Qt Installer Framework `.exe`
+- Linux: Qt Installer Framework installer
+
+See the [latest workflow run](https://github.com/AlexanderTonn/OpenThermVane/actions/workflows/installer-builds.yml).
+
+## ⚠️ Unsigned builds
+
+> [!WARNING]
+> Release artifacts are currently **not code-signed or notarized**. Run them only when the download originates from a trusted repository or release.
+>
+> Do not disable Gatekeeper, Defender or other system-wide security controls globally.
+
+### macOS
+
+> [!CAUTION]
+> macOS may block both the unsigned package and the installed app. The steps below explicitly approve this trusted copy.
+
+1. Open the `.dmg` and run `ThermVane.pkg`.
+2. If macOS blocks the package, Control-click it, choose **Open**, then confirm.
+3. After installation, Control-click `ThermVane.app`, choose **Open**, then confirm **Open**.
+4. If Gatekeeper still blocks it: **System Settings → Privacy & Security → Open Anyway**.
+
+Do not disable Gatekeeper globally. The installer registers the privileged fan helper; macOS may ask once for administrator approval.
+
+### Windows
+
+> [!CAUTION]
+> Windows SmartScreen may warn because the installer has no publisher signature.
+
+1. Start the installer.
+2. If SmartScreen appears, select **More info → Run anyway** after verifying the download source.
+3. If Windows marks the file as blocked: right-click it, open **Properties**, select **Unblock**, then apply.
+
+The installer may require administrator rights for fan-control components.
+
+### Linux
+
+Run the downloaded installer and grant administrator privileges when requested.
+
+## Build from source
+
+Requirements: Qt 6.5+ and CMake 3.24+.
 
 ```sh
 cmake -S . -B build
@@ -20,44 +82,14 @@ cmake --build build
 ./build/ThermVane
 ```
 
-Qt 6.5 or newer is required.
-
-## macOS fan helper
-
-macOS blocks SMC fan writes from a normal GUI process. For manual fan control, install the helper once as a LaunchDaemon:
-
-```sh
-./scripts/macos/install-fan-helper.sh
-```
-
-For a local build, this also builds and installs the helper in one step:
+For manual fan control on macOS during development:
 
 ```sh
 ./scripts/macos/build-and-install-fan-helper.sh
 ```
 
-After that, ThermVane talks to the running helper over a local Unix socket. On an installed system, manual writes require the lease-backed helper server; if it is unavailable, ThermVane refuses an unsafe one-shot privileged write. The installed helper binary remains available for restoring system control. It does not ask for a password on every fan change.
-
-For development-only machines without the installed helper, the unsafe direct SMC fallback can be explicitly enabled with `-DTHERMVANE_ALLOW_UNLEASED_DIRECT_SMC=ON`. Release builds leave this option disabled so a crashed application cannot leave a manual fan override behind without the helper lease.
-
-To remove it:
+Remove the helper with:
 
 ```sh
 ./scripts/macos/uninstall-fan-helper.sh
-```
-
-Beim Windows-IFW-Build wird eine NBFC-Payload mit `-NbfcInstaller` nur akzeptiert, wenn sie authenticode-signiert ist oder zusätzlich der erwartete SHA-256-Hash über `-NbfcSha256` angegeben wird. Der Hash wird in das Paket aufgenommen und vor der Installation erneut geprüft.
-
-The helper socket is `/tmp/thermvane-fan-helper.sock` and is restricted to the user who installed ThermVane. The installed helper path is `/Library/PrivilegedHelperTools/ThermVaneFanHelper`. The helper is restarted by launchd and logs to `/var/log/thermvane-fan-helper.log`.
-
-## Architecture
-
-QML talks to `QAbstractListModel` instances and application managers. Hardware details stay behind `IHardwareBackend`.
-
-```text
-QML
-  -> FanModel / SensorModel / FanCurveModel
-  -> FanManager / SensorManager / FanController
-  -> IHardwareBackend
-  -> Linux / Windows / macOS / mock backends
 ```

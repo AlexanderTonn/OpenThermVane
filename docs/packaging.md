@@ -33,7 +33,7 @@ BUILD_DIR="build/macos-release" \
 
 The output is written to `<build-dir>/macos-dmg/ThermVaneInstaller.dmg`.
 
-The DMG contains `ThermVane.pkg`. The package installs `ThermVane.app` directly to `/Applications`. Its privileged package scripts include the helper binary plus `install-fan-helper.sh` and `uninstall-fan-helper.sh`. A `preinstall` step stops ThermVane, removes the previous helper launchd registration and removes legacy OpenThermVane/QtIFW application folders. The root `postinstall` script then installs `ThermVaneFanHelper` into `/Library/PrivilegedHelperTools/ThermVaneFanHelper`, registers `/Library/LaunchDaemons/com.openthermvane.fanhelper.plist`, and keeps root-owned repair scripts in `/Library/Application Support/OpenThermVane`.
+The DMG contains `ThermVane.pkg`. The package installs `ThermVane.app` directly to `/Applications`. Its privileged package scripts include the helper binary plus `install-fan-helper.sh` and `uninstall-fan-helper.sh`. A `preinstall` step stops ThermVane, removes the previous helper launchd registration and removes legacy OpenThermVane/QtIFW application folders. The root `postinstall` script then installs `ThermVaneFanHelper` into `/Library/PrivilegedHelperTools/ThermVaneFanHelper`, registers `/Library/LaunchDaemons/com.openthermvane.fanhelper.plist`, and keeps root-owned repair scripts in `/Library/Application Support/OpenThermVane`. Postinstall diagnostics are written to `/var/log/thermvane-installer-postinstall.log`.
 
 The old QtIFW macOS installer is no longer used for release builds because it installs into an application folder and can show QtIFW maintenance package warnings on macOS. Windows and Linux still use QtIFW.
 
@@ -84,7 +84,7 @@ During installation, the NBFC component runs the payload elevated and silently:
 
 ## GitHub Actions: installer builds
 
-The workflow `.github/workflows/installer-builds.yml` builds a native DMG installer for macOS and QtIFW installers for Windows and Linux. It runs on pull requests, pushes to `main`, version tags and manual `workflow_dispatch` runs.
+The workflow `.github/workflows/installer-builds.yml` builds a native DMG installer for macOS and QtIFW installers for Windows and Linux. It runs for pull requests targeting `main`, pushes to `main`, version tags and manual `workflow_dispatch` runs.
 
 The macOS job installs Qt with `aqtinstall`, builds the `package_macos_dmg` target and uploads the generated DMG. The Windows and Linux jobs install Qt plus Qt Installer Framework, build `package_ifw` and upload their installers as artifacts:
 
