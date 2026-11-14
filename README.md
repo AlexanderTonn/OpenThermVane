@@ -26,7 +26,7 @@ OpenThermVane is a Qt 6/QML desktop app for temperature monitoring and fan contr
 <img src="assets/screenshots/dashboard.png" alt="Dashboard" width="600" >
 
 
-<img src="assets/screenshots/fans.png" alt="Fans and curve editor" width="600" >
+<img src="assets/screenshots/Fans.png" alt="Fans and curve editor" width="600" >
 
 ## Installers
 

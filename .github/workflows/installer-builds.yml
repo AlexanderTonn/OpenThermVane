@@ -21,7 +21,9 @@ permissions:
   contents: read
 
 env:
-  QT_VERSION: 6.12.0
+  # aqtinstall 3.3.0 expects the legacy Qt repository metadata layout.
+  # Qt 6.12.0 uses a newer Windows layout and fails before CMake starts.
+  QT_VERSION: 6.10.0
   IFW_TOOL_ID: qt.tools.ifw.47
   AQT_BASE_URL: https://download.qt.io
 
