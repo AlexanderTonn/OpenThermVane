@@ -103,12 +103,12 @@ set -euo pipefail
 # variants are deleted only when they contain ThermVane/IFW markers.
 /bin/rm -rf -- /Applications/ThermVane.app
 for legacy in /Applications/OpenThermVane /Applications/ThermVane; do
-    if [[ -d "${legacy}" ]]; then
+    if [ -d "${legacy}" ]; then
         for marker in \
             ThermVane.app OpenThermVane.app ThermVaneMaintenanceTool \
             maintenancetool maintenancetool.exe components.xml maintenance.dat \
             bin/ThermVane bin/OpenThermVane; do
-            if [[ -e "${legacy}/${marker}" ]]; then
+            if [ -e "${legacy}/${marker}" ]; then
                 /bin/rm -rf -- "${legacy}"
                 break
             fi
