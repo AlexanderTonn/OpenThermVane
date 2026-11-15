@@ -31,6 +31,7 @@ private:
     static void powerCallback(void *refCon, io_service_t service, natural_t messageType, void *messageArgument);
     void handlePowerMessage(io_service_t service, natural_t messageType, void *messageArgument);
     void restorePendingManualFans();
+    void scheduleWakeRecovery();
 #endif
 
     QList<SensorInfo> m_sensors;
@@ -41,6 +42,8 @@ private:
     QHash<QString, double> m_pendingManualFanSpeeds;
 #if defined(Q_OS_MACOS)
     QTimer m_helperLeaseTimer;
+    QTimer m_wakeRecoveryTimer;
+    int m_wakeRecoveryPass = 0;
     io_connect_t m_powerConnection = IO_OBJECT_NULL;
     io_object_t m_powerNotifier = IO_OBJECT_NULL;
     IONotificationPortRef m_powerNotificationPort = nullptr;

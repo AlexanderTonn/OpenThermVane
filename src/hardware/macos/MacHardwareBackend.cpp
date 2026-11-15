@@ -1559,6 +1559,19 @@ MacHardwareBackend::MacHardwareBackend(QObject *parent)
     });
     m_helperLeaseTimer.start();
 
+    // SMC/thermalmonitord can expose one or more stale samples immediately
+    // after standby. Retry the complete inventory for a short bounded window
+    // so the curve controller receives fresh sensor and fan model updates.
+    m_wakeRecoveryTimer.setInterval(500);
+    connect(&m_wakeRecoveryTimer, &QTimer::timeout, this, [this] {
+        scan();
+        ++m_wakeRecoveryPass;
+        if (m_wakeRecoveryPass >= 8) {
+            m_wakeRecoveryTimer.stop();
+            qInfo() << "macOS wake recovery completed";
+        }
+    });
+
     m_powerConnection = IORegisterForSystemPower(this, &m_powerNotificationPort, &MacHardwareBackend::powerCallback, &m_powerNotifier);
     if (m_powerConnection != IO_OBJECT_NULL && m_powerNotificationPort) {
         m_powerRunLoopSource = IONotificationPortGetRunLoopSource(m_powerNotificationPort);
@@ -1573,6 +1586,7 @@ MacHardwareBackend::MacHardwareBackend(QObject *parent)
 MacHardwareBackend::~MacHardwareBackend()
 {
 #ifdef Q_OS_MACOS
+    m_wakeRecoveryTimer.stop();
     restorePendingManualFans();
 
     if (m_powerRunLoopSource) {
@@ -1609,6 +1623,7 @@ void MacHardwareBackend::handlePowerMessage(io_service_t service, natural_t mess
 
     switch (messageType) {
     case kIOMessageSystemWillSleep:
+        qInfo() << "macOS standby detected; restoring pending fan overrides";
         restorePendingManualFans();
         if (m_powerConnection != IO_OBJECT_NULL) {
             IOAllowPowerChange(m_powerConnection, reinterpret_cast<long>(messageArgument));
@@ -1616,11 +1631,19 @@ void MacHardwareBackend::handlePowerMessage(io_service_t service, natural_t mess
         break;
     case kIOMessageSystemHasPoweredOn:
     case kIOMessageSystemWillPowerOn:
-        scan();
+        scheduleWakeRecovery();
         break;
     default:
         break;
     }
+}
+
+void MacHardwareBackend::scheduleWakeRecovery()
+{
+    m_wakeRecoveryPass = 0;
+    qInfo() << "macOS wake detected; starting SMC recovery scans";
+    scan();
+    m_wakeRecoveryTimer.start();
 }
 
 void MacHardwareBackend::restorePendingManualFans()
