@@ -637,9 +637,14 @@ void handleClient(int clientFd, uid_t allowedUid)
     if (command == "RESTORE") {
         std::string fanId;
         stream >> fanId;
+        if (fanId.empty() || stream.fail()) {
+            writeAll(clientFd, "ERR invalid command\n");
+            return;
+        }
+
         std::string trailing;
         const bool hasTrailingData = static_cast<bool>(stream >> trailing);
-        if (fanId.empty() || stream.fail() || hasTrailingData) {
+        if (hasTrailingData) {
             writeAll(clientFd, "ERR invalid command\n");
             return;
         }
@@ -655,11 +660,16 @@ void handleClient(int clientFd, uid_t allowedUid)
     std::string fanId;
     double percent = 0.0;
     stream >> fanId >> percent;
+    if (command != "SET" || fanId.empty() || stream.fail()
+        || !std::isfinite(percent) || percent < 0.0 || percent > 100.0) {
+        writeAll(clientFd, "ERR invalid command\n");
+        return;
+    }
+
     std::string trailing;
     const bool hasTrailingData = static_cast<bool>(stream >> trailing);
 
-    if (command != "SET" || fanId.empty() || stream.fail() || hasTrailingData
-        || !std::isfinite(percent) || percent < 0.0 || percent > 100.0) {
+    if (hasTrailingData) {
         writeAll(clientFd, "ERR invalid command\n");
         return;
     }
