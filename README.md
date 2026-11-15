@@ -4,7 +4,7 @@
   <a href="https://github.com/AlexanderTonn/OpenThermVane/actions/workflows/installer-builds.yml">
     <img src="https://github.com/AlexanderTonn/OpenThermVane/actions/workflows/installer-builds.yml/badge.svg?branch=main" alt="Installer Builds">
   </a>
-  <img src="https://img.shields.io/badge/version-1.1.0-55d6be" alt="Version 1.1.0">
+  <img src="https://img.shields.io/badge/version-1.1.1-55d6be" alt="Version 1.1.1">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-5865f2" alt="Platforms">
   <img src="https://img.shields.io/badge/Qt-6.5%2B-41cd52?logo=qt&logoColor=white" alt="Qt 6.5 or newer">
   <img src="https://img.shields.io/badge/CMake-3.24%2B-064f8c?logo=cmake&logoColor=white" alt="CMake 3.24 or newer">

@@ -41,7 +41,7 @@ if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
 endif()
 
 project(OpenThermVane
-    VERSION 1.1.0
+    VERSION 1.1.1
     DESCRIPTION "Cross-platform thermal and fan control"
     LANGUAGES CXX
 )
