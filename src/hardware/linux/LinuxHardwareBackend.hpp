@@ -3,6 +3,7 @@
 #include "hardware/IHardwareBackend.hpp"
 
 #include <QHash>
+#include <QRecursiveMutex>
 
 namespace thermvane {
 
@@ -20,6 +21,7 @@ public:
     bool restoreAutomaticControl(const QString &fanId) override;
 
 private:
+    mutable QRecursiveMutex m_mutex;
     QList<SensorInfo> m_sensors;
     QList<FanInfo> m_fans;
     QHash<QString, int> m_autoFanModes;

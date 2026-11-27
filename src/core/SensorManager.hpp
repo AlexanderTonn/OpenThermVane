@@ -5,6 +5,7 @@
 #include <QObject>
 #include <QList>
 #include <QPointer>
+#include <QThread>
 #include <QTimer>
 
 namespace thermvane {
@@ -18,6 +19,7 @@ class SensorManager final : public QObject
 
 public:
     explicit SensorManager(QObject *parent = nullptr);
+    ~SensorManager() override;
 
     void setBackend(IHardwareBackend *backend);
     QList<SensorInfo> sensors() const;
@@ -34,8 +36,10 @@ private:
     void refresh();
 
     QPointer<IHardwareBackend> m_backend;
+    QPointer<QThread> m_activeScanThread;
     QList<SensorInfo> m_sensors;
     QTimer m_refreshTimer;
+    bool m_scanInFlight = false;
     int m_refreshIntervalMs = 1000;
 };
 

@@ -124,7 +124,7 @@ Rectangle {
                 text: trText("Auto")
                 bottomPadding: 5
                 topPadding: 5
-                enabled: root.supportsControl && !root.curveMode
+                enabled: (root.supportsControl || root.supportsFirmwareControl) && !root.curveMode
                 opacity: root.curveMode ? 1.0 : 0.8
                 Layout.fillWidth: true
                 onClicked: root.automaticRequested()

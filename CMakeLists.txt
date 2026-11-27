@@ -41,7 +41,7 @@ if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
 endif()
 
 project(OpenThermVane
-    VERSION 1.1.1
+    VERSION 1.1.3
     DESCRIPTION "Cross-platform thermal and fan control"
     LANGUAGES CXX
 )
@@ -149,17 +149,34 @@ set(THERMVANE_PROJECT_FILES
     cmake/BuildIfwInstaller.cmake
     cmake/PackageIfw.cmake
     cmake/PackageMacDmg.cmake
+    assets/thermvane.desktop
 )
+
+set(THERMVANE_PLATFORM_ASSETS)
+if(APPLE)
+    # Embed native macOS icon in bundle Resources and reference it from
+    # generated Info.plist. Without this, Finder shows the generic app icon.
+    set_source_files_properties(
+        assets/icons/thermvane.icns
+        PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    list(APPEND THERMVANE_PLATFORM_ASSETS assets/icons/thermvane.icns)
+elseif(WIN32)
+    # Embed native .ico in the executable. Windows Start-menu shortcuts then
+    # inherit the same icon instead of falling back to the generic one.
+    list(APPEND THERMVANE_PLATFORM_ASSETS assets/icons/thermvane.rc)
+endif()
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
     ${THERMVANE_SOURCES}
     ${THERMVANE_QML_FILES}
     ${THERMVANE_PROJECT_FILES}
+    ${THERMVANE_PLATFORM_ASSETS}
 )
 
 qt_add_executable(ThermVane
     ${THERMVANE_SOURCES}
     ${THERMVANE_PROJECT_FILES}
+    ${THERMVANE_PLATFORM_ASSETS}
 )
 
 if(WIN32)
@@ -170,6 +187,7 @@ if(APPLE)
         MACOSX_BUNDLE TRUE
         MACOSX_BUNDLE_BUNDLE_NAME "ThermVane"
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.openthermvane.ThermVane"
+        MACOSX_BUNDLE_ICON_FILE "thermvane.icns"
         MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
         MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
     )
@@ -178,6 +196,13 @@ if(UNIX AND NOT APPLE)
     set_target_properties(ThermVane PROPERTIES
         INSTALL_RPATH "$ORIGIN/../lib"
     )
+    install(FILES
+        assets/thermvane.desktop
+        DESTINATION share/applications)
+    install(FILES
+        assets/icons/thermvane-icon.png
+        DESTINATION share/icons/hicolor/512x512/apps
+        RENAME thermvane.png)
 endif()
 
 qt_add_qml_module(ThermVane

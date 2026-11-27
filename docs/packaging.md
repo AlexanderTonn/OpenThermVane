@@ -33,6 +33,14 @@ BUILD_DIR="build/macos-release" \
 
 The output is written to `<build-dir>/macos-dmg/ThermVaneInstaller.dmg`.
 
+## Application icons
+
+Platform-native assets are packaged automatically:
+
+- macOS: `assets/icons/thermvane.icns` embedded in `ThermVane.app`, used by Finder and Dock.
+- Windows: `assets/icons/thermvane.ico` embedded in `ThermVane.exe`, used by Start-menu shortcuts and Explorer.
+- Linux: `assets/thermvane.desktop` plus hicolor icon installation, used by XDG application menus; Qt also uses the same icon for the window and tray.
+
 The DMG contains `ThermVane.pkg`. The package installs `ThermVane.app` directly to `/Applications`. Its privileged package scripts include the helper binary plus `install-fan-helper.sh` and `uninstall-fan-helper.sh`. A `preinstall` step stops ThermVane, removes the previous helper launchd registration and removes legacy OpenThermVane/QtIFW application folders. The root `postinstall` script then installs `ThermVaneFanHelper` into `/Library/PrivilegedHelperTools/ThermVaneFanHelper`, registers `/Library/LaunchDaemons/com.openthermvane.fanhelper.plist`, and keeps root-owned repair scripts in `/Library/Application Support/OpenThermVane`. Postinstall diagnostics are written to `/var/log/thermvane-installer-postinstall.log`.
 
 The old QtIFW macOS installer is no longer used for release builds because it installs into an application folder and can show QtIFW maintenance package warnings on macOS. Windows and Linux still use QtIFW.

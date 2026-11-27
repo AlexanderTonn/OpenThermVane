@@ -1,5 +1,6 @@
 #include "hardware/mock/MockHardwareBackend.hpp"
 
+#include <QMutexLocker>
 #include <algorithm>
 
 namespace thermvane {
@@ -12,6 +13,7 @@ MockHardwareBackend::MockHardwareBackend(QObject *parent)
 
 void MockHardwareBackend::scan()
 {
+    QMutexLocker locker(&m_mutex);
     m_sensors = {
         {QStringLiteral("cpu-package"), QStringLiteral("CPU Package"), 54.0, QStringLiteral("mock"), true},
         {QStringLiteral("gpu-core"), QStringLiteral("GPU Core"), 61.0, QStringLiteral("mock"), true},
@@ -39,16 +41,19 @@ void MockHardwareBackend::scan()
 
 QList<SensorInfo> MockHardwareBackend::sensors() const
 {
+    QMutexLocker locker(&m_mutex);
     return m_sensors;
 }
 
 QList<FanInfo> MockHardwareBackend::fans() const
 {
+    QMutexLocker locker(&m_mutex);
     return m_fans;
 }
 
 bool MockHardwareBackend::setFanSpeed(const QString &fanId, double percent)
 {
+    QMutexLocker locker(&m_mutex);
     const auto it = std::find_if(m_fans.begin(), m_fans.end(), [&](const FanInfo &fan) {
         return fan.id == fanId;
     });
@@ -65,6 +70,7 @@ bool MockHardwareBackend::setFanSpeed(const QString &fanId, double percent)
 
 bool MockHardwareBackend::restoreAutomaticControl(const QString &fanId)
 {
+    QMutexLocker locker(&m_mutex);
     const auto it = std::find_if(m_fans.begin(), m_fans.end(), [&](const FanInfo &fan) {
         return fan.id == fanId;
     });

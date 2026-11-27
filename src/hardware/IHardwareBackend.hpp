@@ -20,6 +20,9 @@ public:
     ~IHardwareBackend() override = default;
 
     virtual void scan() = 0;
+    // Some backends (Windows WMI/PowerShell) already use asynchronous
+    // process callbacks and must keep scan() on their owning Qt thread.
+    virtual bool scanIsAsynchronous() const { return false; }
     virtual QList<SensorInfo> sensors() const = 0;
     virtual QList<FanInfo> fans() const = 0;
     virtual bool setFanSpeed(const QString &fanId, double percent) = 0;

@@ -1,6 +1,7 @@
 #include "hardware/linux/LinuxHardwareBackend.hpp"
 
 #include <QCollator>
+#include <QMutexLocker>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
@@ -1217,6 +1218,7 @@ LinuxHardwareBackend::LinuxHardwareBackend(QObject *parent)
 
 void LinuxHardwareBackend::scan()
 {
+    QMutexLocker locker(&m_mutex);
     m_sensors = detectLinuxTemperatureSensors();
     m_fans = fanInfosFromControls(detectLinuxFanControls(), m_pendingManualFanSpeeds);
     emit hardwareChanged();
@@ -1224,16 +1226,19 @@ void LinuxHardwareBackend::scan()
 
 QList<SensorInfo> LinuxHardwareBackend::sensors() const
 {
+    QMutexLocker locker(&m_mutex);
     return m_sensors;
 }
 
 QList<FanInfo> LinuxHardwareBackend::fans() const
 {
+    QMutexLocker locker(&m_mutex);
     return m_fans;
 }
 
 bool LinuxHardwareBackend::setFanSpeed(const QString &fanId, double percent)
 {
+    QMutexLocker locker(&m_mutex);
     const double clampedPercent = std::clamp(percent, 0.0, 100.0);
     const QList<LinuxFanControl> controls = detectLinuxFanControls();
     const auto controlIt = std::find_if(controls.cbegin(), controls.cend(), [&](const LinuxFanControl &control) {
@@ -1276,6 +1281,7 @@ bool LinuxHardwareBackend::setFanSpeed(const QString &fanId, double percent)
 
 bool LinuxHardwareBackend::restoreAutomaticControl(const QString &fanId)
 {
+    QMutexLocker locker(&m_mutex);
     const QList<LinuxFanControl> controls = detectLinuxFanControls();
     const auto controlIt = std::find_if(controls.cbegin(), controls.cend(), [&](const LinuxFanControl &control) {
         return control.fan.id == fanId;

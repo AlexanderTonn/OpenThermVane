@@ -338,6 +338,12 @@ bool writeFanModeWithUnlock(const AppleSmcConnection &smc, int fanIndex, double 
     return false;
 }
 
+bool readFanMode(const AppleSmcConnection &smc, int fanIndex, double &mode)
+{
+    return smc.readNumber(fanKey(fanIndex, "Md"), mode)
+        || smc.readNumber(fanKey(fanIndex, "md"), mode);
+}
+
 bool restoreFanControl(const std::string &fanId);
 void markFanControlled(const std::string &fanId);
 void markFanRestored(const std::string &fanId);
@@ -396,7 +402,25 @@ bool setFanSpeed(const std::string &fanId, double percent)
         ? 0.0
         : minRpm + ((maxRpm - minRpm) * clampedPercent / 100.0);
 
-    bool modeSet = writeFanModeWithUnlock(smc, *fanIndex, 1.0);
+    // Do not rewrite an already active manual mode for every curve sample.
+    // thermalmonitord may reject a redundant F*Md write even though F*Tg is
+    // writable; avoiding it makes successive Auto updates reliable.
+    double currentMode = 0.0;
+    const bool modeReadable = readFanMode(smc, *fanIndex, currentMode);
+    bool modeSet = modeReadable && static_cast<int>(std::lround(currentMode)) == 1;
+    if (!modeSet) {
+        double maskValue = 0.0;
+        if (smc.readNumber("FS! ", maskValue)
+            && std::isfinite(maskValue)
+            && maskValue >= 0.0
+            && maskValue <= 65535.0) {
+            const uint16_t mask = static_cast<uint16_t>(std::lround(maskValue));
+            modeSet = (mask & static_cast<uint16_t>(1U << *fanIndex)) != 0;
+        }
+    }
+    if (!modeSet) {
+        modeSet = writeFanModeWithUnlock(smc, *fanIndex, 1.0);
+    }
 
     double maskValue = 0.0;
     if (!modeSet && smc.readNumber("FS! ", maskValue)) {
@@ -447,8 +471,7 @@ bool restoreFanControl(const std::string &fanId)
     }
 
     double currentMode = 0.0;
-    const bool modeReadable = smc.readNumber(fanKey(*fanIndex, "Md"), currentMode)
-        || smc.readNumber(fanKey(*fanIndex, "md"), currentMode);
+    const bool modeReadable = readFanMode(smc, *fanIndex, currentMode);
     if (modeReadable) {
         const int mode = static_cast<int>(std::lround(currentMode));
         if (mode == 0 || mode == 3) {

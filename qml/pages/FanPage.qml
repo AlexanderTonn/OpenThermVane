@@ -308,7 +308,13 @@ Item {
         if (!fanModel || !fanModel.setManualSpeed || !fanCurveModel)
             return
         const fanIndex = findFanIndex(fanId)
-        if (fanIndex < 0 || itemAt(fanModel, fanIndex).supportsControl !== true)
+        if (fanIndex < 0)
+            return
+        const fanInfo = itemAt(fanModel, fanIndex)
+        // Firmware-controlled fans may temporarily report supportsControl as
+        // false while SMC capability keys are unavailable during a scan. Let
+        // the backend/helper perform the authoritative write validation.
+        if (fanInfo.supportsControl !== true && fanInfo.supportsFirmwareControl !== true)
             return
 
         const retryAt = curveApplyRetryAt[fanId]

@@ -22,6 +22,15 @@ SensorManager::SensorManager(QObject *parent)
     connect(&m_refreshTimer, &QTimer::timeout, this, &SensorManager::scan);
 }
 
+SensorManager::~SensorManager()
+{
+    m_refreshTimer.stop();
+    if (m_activeScanThread) {
+        m_activeScanThread->wait();
+        m_activeScanThread = nullptr;
+    }
+}
+
 void SensorManager::setBackend(IHardwareBackend *backend)
 {
     if (m_backend == backend) {
@@ -74,10 +83,38 @@ void SensorManager::setRefreshIntervalMs(int intervalMs)
 
 void SensorManager::scan()
 {
-    if (m_backend) {
-        qDebug() << "Scanning temperature sensors";
-        m_backend->scan();
+    if (!m_backend) {
+        return;
     }
+
+    if (m_backend->scanIsAsynchronous()) {
+        m_backend->scan();
+        return;
+    }
+
+    if (m_scanInFlight) {
+        return;
+    }
+
+    qDebug() << "Scheduling asynchronous hardware scan";
+    m_scanInFlight = true;
+
+    QPointer<IHardwareBackend> backend = m_backend;
+    QThread *worker = QThread::create([backend] {
+        if (backend) {
+            backend->scan();
+        }
+    });
+    m_activeScanThread = worker;
+    worker->setObjectName(QStringLiteral("ThermVaneHardwareScan"));
+    connect(worker, &QThread::finished, worker, &QObject::deleteLater);
+    connect(worker, &QThread::finished, this, [this, worker] {
+        m_scanInFlight = false;
+        if (m_activeScanThread == worker) {
+            m_activeScanThread = nullptr;
+        }
+    }, Qt::QueuedConnection);
+    worker->start();
 }
 
 void SensorManager::refresh()
