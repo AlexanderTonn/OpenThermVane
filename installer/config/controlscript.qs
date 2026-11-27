@@ -50,6 +50,13 @@ function posixDirectoryExists(path)
     return result.length >= 2 && result[1] === 0;
 }
 
+function posixFileExists(path)
+{
+    var nativePath = installer.toNativeSeparators(normalizePath(path));
+    var result = installer.execute("/usr/bin/test", ["-f", nativePath]);
+    return result.length >= 2 && result[1] === 0;
+}
+
 function psSingleQuoted(value)
 {
     return "'" + String(value).replace(/'/g, "''") + "'";
@@ -254,11 +261,20 @@ function safePosixTarget(target)
     return normalized.slice(-14) === "/OpenThermVane" || normalized.slice(-10) === "/ThermVane";
 }
 
+function posixInstallationExists(target)
+{
+    return posixFileExists(target + "/bin/ThermVane")
+        || posixFileExists(target + "/bin/OpenThermVane")
+        || posixFileExists(target + "/components.xml")
+        || posixFileExists(target + "/maintenance.dat");
+}
+
 function preparePosixTarget(widget)
 {
     var target = selectedTargetDirectory(widget);
-    if (!safePosixTarget(target) || !posixDirectoryExists(target)) {
-        return;
+    if (!safePosixTarget(target) || !posixDirectoryExists(target)
+        || !posixInstallationExists(target)) {
+        return true;
     }
 
     if (!installer.hasAdminRights() && !installer.gainAdminRights()) {
@@ -266,7 +282,7 @@ function preparePosixTarget(widget)
             "ThermVane Installer",
             "Zum Ersetzen der vorhandenen OpenThermVane-Installation werden Administratorrechte benötigt.",
             QMessageBox.Ok);
-        return;
+        return false;
     }
 
     var result = installer.execute("/bin/rm", ["-rf", installer.toNativeSeparators(target)]);
@@ -276,12 +292,25 @@ function preparePosixTarget(widget)
             "Der vorhandene OpenThermVane-Ordner konnte nicht ersetzt werden:\n"
                 + installer.toNativeSeparators(target),
             QMessageBox.Ok);
+        return false;
     }
+
+    if (posixDirectoryExists(target)) {
+        QMessageBox.critical("ThermVane.OverwriteStillBlocked",
+            "ThermVane Installer",
+            "Die bestehende ThermVane-Installation konnte nicht vollständig entfernt werden:\n"
+                + installer.toNativeSeparators(target),
+            QMessageBox.Ok);
+        return false;
+    }
+
+    thermVaneTargetPrepared[target] = true;
+    return true;
 }
 
 Controller.prototype.TargetDirectoryPageCallback = function()
 {
-    if (systemInfo.productType === "osx" || systemInfo.productType === "linux") {
+    if (systemInfo.productType === "osx" || systemInfo.kernelType === "linux") {
         var posixWidget = gui.currentPageWidget();
         preparePosixTarget(posixWidget);
         if (posixWidget !== null && posixWidget.TargetDirectoryLineEdit !== undefined) {
@@ -312,6 +341,11 @@ Controller.prototype.TargetDirectoryPageCallback = function()
 
 Controller.prototype.ReadyForInstallationPageCallback = function()
 {
+    if (systemInfo.kernelType === "linux") {
+        preparePosixTarget(null);
+        return;
+    }
+
     if (systemInfo.productType !== "windows") {
         return;
     }

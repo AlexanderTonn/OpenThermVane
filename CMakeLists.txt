@@ -150,6 +150,7 @@ set(THERMVANE_PROJECT_FILES
     cmake/PackageIfw.cmake
     cmake/PackageMacDmg.cmake
     assets/thermvane.desktop
+    scripts/linux/register-desktop-entry.sh
 )
 
 set(THERMVANE_PLATFORM_ASSETS)
@@ -203,6 +204,9 @@ if(UNIX AND NOT APPLE)
         assets/icons/thermvane-icon.png
         DESTINATION share/icons/hicolor/512x512/apps
         RENAME thermvane.png)
+    install(PROGRAMS
+        scripts/linux/register-desktop-entry.sh
+        DESTINATION share/thermvane)
 endif()
 
 qt_add_qml_module(ThermVane
