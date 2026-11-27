@@ -2,6 +2,8 @@
 
 #include "hardware/IHardwareBackend.hpp"
 
+#include <QRecursiveMutex>
+
 namespace thermvane {
 
 class MockHardwareBackend final : public IHardwareBackend
@@ -18,6 +20,7 @@ public:
     bool restoreAutomaticControl(const QString &fanId) override;
 
 private:
+    mutable QRecursiveMutex m_mutex;
     QList<SensorInfo> m_sensors;
     QList<FanInfo> m_fans;
 };

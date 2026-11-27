@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=ThermVane
+Comment=Cross-platform thermal and fan control
+Exec=ThermVane
+Icon=thermvane
+Terminal=false
+Categories=Utility;HardwareSettings;System;
+StartupNotify=true
+StartupWMClass=ThermVane

@@ -7,6 +7,9 @@
 #include <QRegularExpression>
 #include <QSet>
 #include <QSysInfo>
+#include <QPointer>
+#include <QMutexLocker>
+#include <QThread>
 #include <QStringList>
 
 #include <algorithm>
@@ -808,10 +811,16 @@ void upsertSensor(QList<SensorInfo> &sensors, SensorInfo sensor)
         return;
     }
 
-    if (existing->available == sensor.available && sensor.temperatureCelsius > existing->temperatureCelsius) {
-        existing->temperatureCelsius = sensor.temperatureCelsius;
-        existing->id = sensor.id;
-        existing->source = sensor.source;
+    if (existing->available == sensor.available) {
+        // Always publish the latest sample. Comparing temperatures here
+        // retained old high readings forever when a CPU/GPU cooled down.
+        // Prefer a real SMC sample when a duplicate HID/IORegistry sample is
+        // encountered, but never select a sample merely because it is hotter.
+        const bool existingIsSmc = existing->source.startsWith(QStringLiteral("SMC "), Qt::CaseInsensitive);
+        const bool sensorIsSmc = sensor.source.startsWith(QStringLiteral("SMC "), Qt::CaseInsensitive);
+        if (sensorIsSmc || !existingIsSmc) {
+            *existing = std::move(sensor);
+        }
     }
 }
 
@@ -895,6 +904,16 @@ QString privilegedHelperSocketPath()
 QString installedPrivilegedHelperPath()
 {
     return QStringLiteral("/Library/PrivilegedHelperTools/ThermVaneFanHelper");
+}
+
+bool privilegedHelperAvailable()
+{
+    // The launchd service can remain running while the helper binary is being
+    // replaced during an update (and a debug build may use an already
+    // installed service).  The socket is therefore an equally valid signal
+    // that the lease-backed helper can receive commands.
+    return QFileInfo::exists(installedPrivilegedHelperPath())
+        || QFileInfo::exists(privilegedHelperSocketPath());
 }
 
 bool runInstalledPrivilegedHelper(const QStringList &arguments)
@@ -1177,8 +1196,24 @@ void appendSmcFans(QList<FanInfo> &fans, QHash<QString, double> *autoFanModes, Q
             ? !manualBySwitch
             : (!modeReadable || static_cast<int>(std::lround(mode)) != 1);
         fan.capabilities.rpmReading = true;
-        fan.capabilities.manualControl = (manualFanMaskReadable || modeReadable) && targetReadable && limitsReadable;
-        fan.capabilities.firmwareControl = manualFanMaskReadable || modeReadable;
+        // F*Tg is not readable on every Apple Silicon generation while the
+        // firmware owns the fan. That does not mean the target cannot be
+        // written: the privileged helper reads the limits and writes F*Tg
+        // after switching the fan to manual mode. Requiring targetReadable
+        // here incorrectly disabled the Auto curve for those machines.
+        const bool helperAvailable = privilegedHelperAvailable();
+        fan.capabilities.manualControl = (limitsReadable
+                                          && (manualFanMaskReadable || modeReadable))
+            // The installed helper performs its own limit/mode validation.
+            // Keep the fan controllable when a transient SMC read omitted one
+            // of those keys during a scan; otherwise QML never sends Auto's
+            // curve request at all.
+            || (helperAvailable && fan.capabilities.rpmReading);
+        // On some M4 revisions FS! and F*Md are not readable from the app
+        // process even though the privileged helper can switch the fan mode.
+        // Report firmware control when the lease-backed helper is available;
+        // it remains the authoritative validator for the actual SMC command.
+        fan.capabilities.firmwareControl = manualFanMaskReadable || modeReadable || helperAvailable;
         fan.capabilities.zeroRpm = limitsReadable && minRpm <= 0.0;
         fan.capabilities.pwmControl = false;
 
@@ -1553,18 +1588,38 @@ MacHardwareBackend::MacHardwareBackend(QObject *parent)
     // returns the fans to firmware control automatically.
     m_helperLeaseTimer.setInterval(5000);
     connect(&m_helperLeaseTimer, &QTimer::timeout, this, [this] {
-        if (!m_pendingManualFanSpeeds.isEmpty()) {
-            pingHelperServer();
+        // Do not compete with an in-flight SMC command. A synchronous ping
+        // here would reintroduce the main-thread stall seen in the crash
+        // report while the helper is waiting on thermalmonitord.
+        bool leaseNeeded = false;
+        {
+            QMutexLocker locker(&m_mutex);
+            leaseNeeded = !m_pendingManualFanSpeeds.isEmpty()
+                && m_pendingHelperFanWrites.isEmpty()
+                && m_helperFanWritesInFlight.isEmpty()
+                && m_pendingHelperFanRestores.isEmpty();
+        }
+        if (leaseNeeded) {
+            dispatchHelperLeasePing();
         }
     });
     m_helperLeaseTimer.start();
 
+    m_helperWriteRetryTimer.setInterval(2000);
+    connect(&m_helperWriteRetryTimer, &QTimer::timeout, this, [this] {
+        dispatchNextHelperOperation();
+
+        if (m_pendingHelperFanWrites.isEmpty() && m_pendingHelperFanRestores.isEmpty()) {
+            m_helperWriteRetryTimer.stop();
+        }
+    });
+
     // SMC/thermalmonitord can expose one or more stale samples immediately
-    // after standby. Retry the complete inventory for a short bounded window
-    // so the curve controller receives fresh sensor and fan model updates.
+    // after standby. SensorManager performs the actual scans asynchronously;
+    // this timer only marks the bounded recovery window and never performs a
+    // blocking SMC read on the main thread.
     m_wakeRecoveryTimer.setInterval(500);
     connect(&m_wakeRecoveryTimer, &QTimer::timeout, this, [this] {
-        scan();
         ++m_wakeRecoveryPass;
         if (m_wakeRecoveryPass >= 8) {
             m_wakeRecoveryTimer.stop();
@@ -1586,6 +1641,8 @@ MacHardwareBackend::MacHardwareBackend(QObject *parent)
 MacHardwareBackend::~MacHardwareBackend()
 {
 #ifdef Q_OS_MACOS
+    m_helperLeaseTimer.stop();
+    m_helperWriteRetryTimer.stop();
     m_wakeRecoveryTimer.stop();
     restorePendingManualFans();
 
@@ -1641,23 +1698,224 @@ void MacHardwareBackend::handlePowerMessage(io_service_t service, natural_t mess
 void MacHardwareBackend::scheduleWakeRecovery()
 {
     m_wakeRecoveryPass = 0;
-    qInfo() << "macOS wake detected; starting SMC recovery scans";
-    scan();
+    qInfo() << "macOS wake detected; asynchronous SMC recovery window started";
     m_wakeRecoveryTimer.start();
 }
 
 void MacHardwareBackend::restorePendingManualFans()
 {
-    const QStringList fanIds = m_pendingManualFanSpeeds.keys();
+    QStringList fanIds;
+    {
+        QMutexLocker locker(&m_mutex);
+        fanIds = m_pendingManualFanSpeeds.keys();
+    }
     for (const QString &fanId : fanIds) {
         restoreAutomaticControl(fanId);
     }
+}
+
+void MacHardwareBackend::dispatchHelperFanWrite(const QString &fanId)
+{
+    // Helper server serializes SMC transactions globally. Keep one command
+    // in flight across all fans and coalesce newer requests per fan.
+    if (!m_helperFanWritesInFlight.isEmpty()) {
+        return;
+    }
+
+    const auto request = m_pendingHelperFanWrites.constFind(fanId);
+    if (request == m_pendingHelperFanWrites.cend()) {
+        return;
+    }
+
+    const double requestedPercent = request.value();
+    m_helperFanWritesInFlight.insert(fanId);
+
+    // SMC/thermalmonitord can block for several seconds. Run only the
+    // privileged helper IPC off the GUI thread; all backend state changes and
+    // scans remain queued on this object's thread.
+    QPointer<MacHardwareBackend> backend(this);
+    QThread *worker = QThread::create([backend, fanId, requestedPercent] {
+        const bool success = sendFanSpeedToHelperServer(fanId, requestedPercent);
+        if (!backend) {
+            return;
+        }
+
+        QMetaObject::invokeMethod(backend,
+                                  [backend, fanId, requestedPercent, success] {
+                                      if (backend) {
+                                          backend->completeHelperFanWrite(fanId, requestedPercent, success);
+                                      }
+                                  },
+                                  Qt::QueuedConnection);
+    });
+    worker->setObjectName(QStringLiteral("ThermVaneFanWrite"));
+    connect(worker, &QThread::finished, worker, &QObject::deleteLater);
+    worker->start();
+}
+
+void MacHardwareBackend::completeHelperFanWrite(const QString &fanId,
+                                                double requestedPercent,
+                                                bool success)
+{
+    QMutexLocker locker(&m_mutex);
+    m_helperFanWritesInFlight.remove(fanId);
+
+    const auto latestRequest = m_pendingHelperFanWrites.constFind(fanId);
+    const bool superseded = latestRequest != m_pendingHelperFanWrites.cend()
+        && !qFuzzyCompare(latestRequest.value() + 1.0, requestedPercent + 1.0);
+
+    if (!success) {
+        qWarning() << "Asynchronous macOS fan write failed; will retry"
+                   << fanId << requestedPercent << "%";
+        m_helperWriteRetryTimer.start();
+        return;
+    }
+
+    if (superseded) {
+        dispatchHelperFanWrite(fanId);
+    } else {
+        m_pendingHelperFanWrites.remove(fanId);
+    }
+
+    // A restore requested while this write was in flight must run after the
+    // write completes, otherwise the two helper commands race each other.
+    if (m_pendingHelperFanRestores.contains(fanId)) {
+        dispatchHelperFanRestore(fanId);
+    }
+    dispatchNextHelperOperation();
+
+    if (m_pendingHelperFanWrites.isEmpty() && m_pendingHelperFanRestores.isEmpty()) {
+        m_helperWriteRetryTimer.stop();
+    }
+}
+
+void MacHardwareBackend::dispatchHelperFanRestore(const QString &fanId)
+{
+    if (!m_helperFanWritesInFlight.isEmpty()) {
+        return;
+    }
+    if (!m_pendingHelperFanRestores.contains(fanId)) {
+        return;
+    }
+
+    m_helperFanWritesInFlight.insert(fanId);
+    QPointer<MacHardwareBackend> backend(this);
+    QThread *worker = QThread::create([backend, fanId] {
+        const bool success = sendRestoreFanToHelperServer(fanId);
+        if (!backend) {
+            return;
+        }
+
+        QMetaObject::invokeMethod(backend,
+                                  [backend, fanId, success] {
+                                      if (backend) {
+                                          backend->completeHelperFanRestore(fanId, success);
+                                      }
+                                  },
+                                  Qt::QueuedConnection);
+    });
+    worker->setObjectName(QStringLiteral("ThermVaneFanRestore"));
+    connect(worker, &QThread::finished, worker, &QObject::deleteLater);
+    worker->start();
+}
+
+void MacHardwareBackend::completeHelperFanRestore(const QString &fanId, bool success)
+{
+    QMutexLocker locker(&m_mutex);
+    m_helperFanWritesInFlight.remove(fanId);
+    if (!success) {
+        qWarning() << "Asynchronous macOS fan restore failed; will retry" << fanId;
+        m_helperWriteRetryTimer.start();
+        return;
+    }
+
+    m_pendingHelperFanRestores.remove(fanId);
+    const bool newerManualWritePending = m_pendingHelperFanWrites.contains(fanId);
+    if (!newerManualWritePending) {
+        m_pendingManualFanSpeeds.remove(fanId);
+    }
+
+    for (FanInfo &fan : m_fans) {
+        if (fan.id == fanId) {
+            fan.automatic = true;
+            break;
+        }
+    }
+    emit hardwareChanged();
+
+    if (newerManualWritePending) {
+        dispatchHelperFanWrite(fanId);
+    }
+    dispatchNextHelperOperation();
+
+    if (m_pendingHelperFanWrites.isEmpty() && m_pendingHelperFanRestores.isEmpty()) {
+        m_helperWriteRetryTimer.stop();
+    }
+}
+
+void MacHardwareBackend::dispatchNextHelperOperation()
+{
+    if (!m_helperFanWritesInFlight.isEmpty()) {
+        return;
+    }
+
+    const QStringList restoreIds = m_pendingHelperFanRestores.values();
+    if (!restoreIds.isEmpty()) {
+        dispatchHelperFanRestore(restoreIds.constFirst());
+        return;
+    }
+
+    const QStringList writeIds = m_pendingHelperFanWrites.keys();
+    if (!writeIds.isEmpty()) {
+        dispatchHelperFanWrite(writeIds.constFirst());
+    }
+}
+
+void MacHardwareBackend::dispatchHelperLeasePing()
+{
+    if (m_helperLeasePingInFlight) {
+        return;
+    }
+
+    m_helperLeasePingInFlight = true;
+    QPointer<MacHardwareBackend> backend(this);
+    QThread *worker = QThread::create([backend] {
+        const bool success = pingHelperServer();
+        if (!backend) {
+            return;
+        }
+
+        QMetaObject::invokeMethod(backend,
+                                  [backend, success] {
+                                      if (!backend) {
+                                          return;
+                                      }
+                                      backend->m_helperLeasePingInFlight = false;
+                                      if (!success) {
+                                          qWarning() << "macOS fan helper lease ping failed";
+                                      }
+                                  },
+                                  Qt::QueuedConnection);
+    });
+    worker->setObjectName(QStringLiteral("ThermVaneHelperLeasePing"));
+    connect(worker, &QThread::finished, worker, &QObject::deleteLater);
+    worker->start();
 }
 #endif
 
 void MacHardwareBackend::scan()
 {
 #ifdef Q_OS_MACOS
+    QMutexLocker locker(&m_mutex);
+    // The privileged helper and this process use separate SMC connections.
+    // Do not issue a read transaction while the helper is changing mode or
+    // target RPM; thermalmonitord can reject the write when both transactions
+    // overlap. The next timer tick refreshes the snapshots after completion.
+    if (!m_helperFanWritesInFlight.isEmpty()) {
+        qDebug() << "Skipping macOS hardware scan while fan helper SMC operation is in flight";
+        return;
+    }
+
     const QList<SensorInfo> previousSensors = m_sensors;
     const QList<FanInfo> previousFans = m_fans;
     m_sensors.clear();
@@ -1671,30 +1929,12 @@ void MacHardwareBackend::scan()
     appendSmcTemperatureSensors(m_sensors);
     appendSmcFans(m_fans, &m_autoFanModes, &m_pendingManualFanSpeeds);
 
-    QSet<QString> registrySeenNames;
-
-    ScopedCFRelease client(IOHIDEventSystemClientCreate(kCFAllocatorDefault));
-    if (client.get()) {
-        ScopedCFRelease matching(createTemperatureSensorMatching());
-        IOHIDEventSystemClientSetMatching(client.get(), static_cast<CFDictionaryRef>(matching.get()));
-
-        ScopedCFRelease services(IOHIDEventSystemClientCopyServices(client.get()));
-        if (services.get() && CFGetTypeID(services.get()) == CFArrayGetTypeID()) {
-            appendTemperatureServices(static_cast<CFArrayRef>(services.get()), m_sensors);
-        }
-    }
-
-    if (m_sensors.isEmpty()) {
-        ScopedCFRelease fallbackClient(IOHIDEventSystemClientCreate(kCFAllocatorDefault));
-        if (fallbackClient.get()) {
-            ScopedCFRelease allServices(IOHIDEventSystemClientCopyServices(fallbackClient.get()));
-            if (allServices.get() && CFGetTypeID(allServices.get()) == CFArrayGetTypeID()) {
-                appendTemperatureServices(static_cast<CFArrayRef>(allServices.get()), m_sensors);
-            }
-        }
-    }
-
-    appendIoRegistryTemperatureSensors(m_sensors, registrySeenNames);
+    // Apple Silicon temperature control is based on the real SMC Te*/Tp*/Tg*
+    // keys above. Do not query IOHID/IORegistry in this worker scan: those
+    // APIs can block while thermalmonitord is transitioning after sleep and
+    // would hold the backend mutex, freezing both sensor updates and fan
+    // commands at the last sample. IOHID remains available to platform code
+    // that explicitly needs it, but is not part of the control loop.
 
     stabilizeSensorReadings(m_sensors, previousSensors, m_missingSensorScans);
     stabilizeFanReadings(m_fans, previousFans, m_missingFanScans);
@@ -1719,17 +1959,20 @@ void MacHardwareBackend::scan()
 
 QList<SensorInfo> MacHardwareBackend::sensors() const
 {
+    QMutexLocker locker(&m_mutex);
     return m_sensors;
 }
 
 QList<FanInfo> MacHardwareBackend::fans() const
 {
+    QMutexLocker locker(&m_mutex);
     return m_fans;
 }
 
 bool MacHardwareBackend::setFanSpeed(const QString &fanId, double percent)
 {
 #ifdef Q_OS_MACOS
+    QMutexLocker locker(&m_mutex);
     const int fanIndex = fanIndexFromId(fanId);
     if (fanIndex < 0) {
         return false;
@@ -1737,18 +1980,19 @@ bool MacHardwareBackend::setFanSpeed(const QString &fanId, double percent)
 
     const double clampedPercent = std::clamp(percent, 0.0, 100.0);
     qInfo() << "Requesting macOS fan speed" << fanId << clampedPercent << "%";
-    if (sendFanSpeedToHelperServer(fanId, clampedPercent)) {
-        m_pendingManualFanSpeeds.insert(fanId, clampedPercent);
-        scan();
-        return true;
-    }
 
-    // Never use a one-shot privileged helper when the installed lease-backed
-    // helper exists: it cannot observe an app crash. The direct path below is
-    // only compiled in for explicit development builds.
-    if (QFileInfo::exists(installedPrivilegedHelperPath())) {
-        qWarning() << "Fan helper server unavailable; refusing unsafe one-shot manual fan write" << fanId;
-        return false;
+    // Production builds use the lease-backed helper. Queueing avoids a
+    // synchronous socket read on the GUI thread when SMC access stalls.
+    const bool helperAvailable = privilegedHelperAvailable();
+    qInfo() << "macOS fan helper availability"
+            << "binary" << QFileInfo::exists(installedPrivilegedHelperPath())
+            << "socket" << QFileInfo::exists(privilegedHelperSocketPath());
+    if (helperAvailable) {
+        m_pendingManualFanSpeeds.insert(fanId, clampedPercent);
+        m_pendingHelperFanRestores.remove(fanId);
+        m_pendingHelperFanWrites.insert(fanId, clampedPercent);
+        dispatchHelperFanWrite(fanId);
+        return true;
     }
 
 #if !defined(THERMVANE_ALLOW_UNLEASED_DIRECT_SMC)
@@ -1804,12 +2048,27 @@ bool MacHardwareBackend::setFanSpeed(const QString &fanId, double percent)
 bool MacHardwareBackend::restoreAutomaticControl(const QString &fanId)
 {
 #ifdef Q_OS_MACOS
+    QMutexLocker locker(&m_mutex);
     const int fanIndex = fanIndexFromId(fanId);
     if (fanIndex < 0) {
         return false;
     }
 
     qInfo() << "Restoring macOS fan to system automatic control" << fanId;
+
+    // Production builds use the lease-backed helper. Queue restore behind
+    // any write, including a failed/disconnected request; never wait for a
+    // potentially blocked helper socket on the GUI thread.
+    if (privilegedHelperAvailable()) {
+        m_pendingHelperFanWrites.remove(fanId);
+        m_pendingHelperFanRestores.insert(fanId);
+        m_pendingManualFanSpeeds.remove(fanId);
+        if (!m_helperFanWritesInFlight.contains(fanId)) {
+            dispatchHelperFanRestore(fanId);
+        }
+        m_helperWriteRetryTimer.start();
+        return true;
+    }
 
     if (sendRestoreFanToHelperServer(fanId)) {
         m_pendingManualFanSpeeds.remove(fanId);

@@ -5,6 +5,7 @@
 #include <QElapsedTimer>
 #include <QHash>
 #include <QJsonObject>
+#include <QRecursiveMutex>
 #include <QString>
 
 namespace thermvane {
@@ -24,6 +25,7 @@ public:
     };
 
     void scan() override;
+    bool scanIsAsynchronous() const override { return true; }
     QList<SensorInfo> sensors() const override;
     QList<FanInfo> fans() const override;
     bool setFanSpeed(const QString &fanId, double percent) override;
@@ -34,6 +36,7 @@ private:
     void ensureNbfcConfigured();
     void applyHardwareSnapshot(const QJsonObject &hardware);
 
+    mutable QRecursiveMutex m_mutex;
     QList<SensorInfo> m_sensors;
     QList<FanInfo> m_fans;
     QHash<QString, WmiControlTarget> m_controlsByFanId;

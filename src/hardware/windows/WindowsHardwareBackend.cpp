@@ -8,6 +8,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLibrary>
+#include <QMutexLocker>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSet>
@@ -1172,6 +1173,7 @@ void WindowsHardwareBackend::ensureNbfcConfigured()
 
 void WindowsHardwareBackend::scan()
 {
+    QMutexLocker locker(&m_mutex);
     if (m_lastScanTimer.isValid() && m_lastScanTimer.elapsed() < kMinimumScanIntervalMs) {
         return;
     }
@@ -1216,6 +1218,7 @@ void WindowsHardwareBackend::scan()
 
 void WindowsHardwareBackend::applyHardwareSnapshot(const QJsonObject &hardware)
 {
+    QMutexLocker locker(&m_mutex);
     QList<SensorInfo> nextSensors;
     QList<FanInfo> nextFans;
     QHash<QString, WmiControlTarget> nextControls;
@@ -1272,16 +1275,19 @@ void WindowsHardwareBackend::applyHardwareSnapshot(const QJsonObject &hardware)
 
 QList<SensorInfo> WindowsHardwareBackend::sensors() const
 {
+    QMutexLocker locker(&m_mutex);
     return m_sensors;
 }
 
 QList<FanInfo> WindowsHardwareBackend::fans() const
 {
+    QMutexLocker locker(&m_mutex);
     return m_fans;
 }
 
 bool WindowsHardwareBackend::setFanSpeed(const QString &fanId, double percent)
 {
+    QMutexLocker locker(&m_mutex);
     const double clampedPercent = std::clamp(percent, 0.0, 100.0);
     const auto controlIt = m_controlsByFanId.constFind(fanId);
     if (controlIt != m_controlsByFanId.cend()) {
@@ -1336,6 +1342,7 @@ bool WindowsHardwareBackend::setFanSpeed(const QString &fanId, double percent)
 
 bool WindowsHardwareBackend::restoreAutomaticControl(const QString &fanId)
 {
+    QMutexLocker locker(&m_mutex);
     const auto controlIt = m_controlsByFanId.constFind(fanId);
     if (controlIt != m_controlsByFanId.cend()) {
         if (!writeHardwareMonitorControl(controlIt.value(), nullptr)) {
