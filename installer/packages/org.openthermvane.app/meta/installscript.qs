@@ -22,4 +22,17 @@ Component.prototype.createOperations = function()
             "/bin/bash",
             "@TargetDir@/scripts/macos/uninstall-fan-helper.sh");
     }
+
+    if (systemInfo.kernelType === "linux") {
+        component.addElevatedOperation("Execute",
+            "/bin/sh",
+            "@TargetDir@/share/thermvane/register-desktop-entry.sh",
+            "@TargetDir@",
+            "install",
+            "UNDOEXECUTE",
+            "/bin/sh",
+            "@TargetDir@/share/thermvane/register-desktop-entry.sh",
+            "@TargetDir@",
+            "uninstall");
+    }
 }

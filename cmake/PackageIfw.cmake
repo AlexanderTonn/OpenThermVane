@@ -113,6 +113,19 @@ if(UNIX AND NOT APPLE)
             FOLLOW_SYMLINK_CHAIN)
     endif()
 
+    # Qt's Linux build links QtCore against the ICU libraries shipped with
+    # the selected Qt kit. They are not named libQt6*.so, so copying only the
+    # Qt libraries leaves the installed executable unable to start on systems
+    # with a different or missing ICU version.
+    file(GLOB qt_runtime_icu_libraries
+        "${QT_ROOT}/lib/libicu*.so"
+        "${QT_ROOT}/lib/libicu*.so.*")
+    if(qt_runtime_icu_libraries)
+        file(COPY ${qt_runtime_icu_libraries}
+            DESTINATION "${INSTALL_ROOT}/lib"
+            FOLLOW_SYMLINK_CHAIN)
+    endif()
+
     if(EXISTS "${QT_ROOT}/plugins")
         file(COPY "${QT_ROOT}/plugins/" DESTINATION "${INSTALL_ROOT}/plugins")
     endif()
